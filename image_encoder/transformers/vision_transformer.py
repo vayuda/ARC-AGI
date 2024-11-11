@@ -198,9 +198,9 @@ class VisionTransformer(nn.Module):
         print(f"Model and parameters saved to {save_path}")
 
     @classmethod
-    def load_model(cls, path):
-        checkpoint = torch.load(path)
+    def load_model(cls, path, device='cpu'):
+        checkpoint = torch.load(path, map_location=torch.device(device))
         model = cls(**checkpoint['model_params'])
         model.load_state_dict(checkpoint['model_state_dict'])
-        print(f"Model loaded from {path}")
+        print(f"Model loaded from {path} on {device}")
         return model
