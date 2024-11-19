@@ -1,8 +1,10 @@
 *.svg
 *.png
 .ipynb_checkpoints/
+.virtual_documents/
 __pycache__/
 *.egg-info/
 # python environments
 arc-291c/
 arc
+logs/

@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
+import image_encoder.transformers as transformers
 
 from util import hex_to_rgb, COLOR_TO_HEX
 
@@ -13,6 +14,10 @@ def load_resnet50():
     resnet50 = resnet50(pretrained=True)
     resnet50 = torch.nn.Sequential(*list(resnet50.children())[:-1])
     return resnet50
+
+def load_ViT():
+    # Load the pretrained ViT
+    return transformers.get_encoder('trained_models/vit_20241110_75k.pth')
 
 def get_embedding(image, encoder, display=False):
     """
