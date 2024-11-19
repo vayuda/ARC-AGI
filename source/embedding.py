@@ -17,7 +17,7 @@ def load_resnet50():
 
 def load_ViT():
     # Load the pretrained ViT
-    return transformers.get_encoder('trained_models/vit_20241110_75k.pth')
+    return transformers.get_encoder('trained_models/vit_11-18_sinusoid125k.pth')
 
 def get_embedding(image, encoder, display=False):
     """
