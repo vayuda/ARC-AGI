@@ -1,3 +1,7 @@
+import os
+import csv
+from datetime import datetime
+
 import torch
 import torch.nn.functional as F
 
@@ -122,14 +126,14 @@ def hex_to_rgb(hex_color):
     return tuple(int(hex_color[i:i+2], 16) / 255.0 for i in (0, 2, 4))
 
 
-def get_idx(x, y, CLS=False):
+def get_idx(x, y, CLS=False, size=(32,32)):
     """
     Get the index for a given (x, y) position in a 32x32 grid with an optional CLS token.
     If CLS is True, returns 0. Otherwise, calculates and returns the unrolled index + 1.
     """
     if CLS:
         return 0
-    return y * 32 + x + 1  # +1 to account for CLS token
+    return y * size[1] + x + 1  # +1 to account for CLS token
 
 
 def plot_tensors_with_colors(tensors, title=None):
@@ -154,12 +158,12 @@ def plot_tensors_with_colors(tensors, title=None):
     plt.show()
 
 
-def plot_attention_map(attention_matrix, idx):
+def plot_attention_map(attention_matrix, idx, size=(32,32)):
     """
     Given an attention matrix of shape (1025, 1025) and an idx, 
     plot the attention map for that idx as a 32x32 grid and print the CLS token attention score.
     """
-    attention_map = attention_matrix[idx, 1:].reshape(32, 32)  # Skip CLS token in the reshaping
+    attention_map = attention_matrix[idx, 1:].reshape(size)  # Skip CLS token in the reshaping
 
     # Plotting our attention map
     plt.figure(figsize=(6, 6))
@@ -179,10 +183,11 @@ def plot_tensor_with_highlight(tensor, idx=None):
     - idx: the index to highlight in the 32x32 grid (ignores if idx == 0)
     """
     fig, ax = plt.subplots(figsize=(5, 5))  # Set default size to 6x6
-
+    height, width = tensor.shape
+    
     # Calculate (x, y) for the given idx (ignoring CLS token)
     if idx and idx > 0:
-        x, y = (idx - 1) % 32, (idx - 1) // 32  # Convert idx to (x, y) in 32x32 grid
+        x, y = (idx - 1) % width, (idx - 1) // width  # Convert idx to (x, y) in 32x32 grid
     
     # Convert the tensor to RGB using COLOR_TO_HEX mapping
     tensor_np = tensor.numpy().squeeze().astype(int)  # Ensure 2D and integer type
@@ -232,3 +237,47 @@ def top_k_cosine_similarity(tensor, idx, k, largest=True):
     cosine_similarities = torch.matmul(normalized_tensor, reference_vector.T).squeeze()  # Shape: n
     top_k_values, top_k_indices = torch.topk(cosine_similarities, k=k, largest=largest)
     return top_k_indices, top_k_values
+
+
+def setup_csv_logger(log_dir='logs'):
+    """
+    Set up the CSV logger by creating the logs directory and initializing a CSV file.
+
+    Args:
+        log_dir (str): Directory to store the log file.
+
+    Returns:
+        str: Path to the CSV file.
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+    csv_file = os.path.join(log_dir, f'training_log_{current_time}.csv')
+
+    with open(csv_file, mode='w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Sample_Num', 'Train_Patch_Loss', 'Train_Class_Loss', 'Train_Total_Loss', 
+                         'Eval_Patch_Loss', 'Eval_Class_Loss', 'Eval_Total_Loss', 'Samples_per_Second'])
+
+    return csv_file
+
+
+def log_to_csv(csv_file, sample_num, train_patch_loss, train_class_loss, train_total_loss, 
+               eval_patch_loss, eval_class_loss, eval_total_loss, samples_per_second):
+    """
+    Append training and evaluation metrics to the CSV file.
+
+    Args:
+        csv_file (str): Path to the CSV file.
+        sample_num (int): Cumulative number of samples processed.
+        train_patch_loss (float): Training patch loss.
+        train_class_loss (float): Training class loss.
+        train_total_loss (float): Total training loss.
+        eval_patch_loss (float): Evaluation patch loss.
+        eval_class_loss (float): Evaluation class loss.
+        eval_total_loss (float): Total evaluation loss.
+        samples_per_second (float): Processing speed in samples per second.
+    """
+    with open(csv_file, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([sample_num, train_patch_loss, train_class_loss, train_total_loss,
+                         eval_patch_loss, eval_class_loss, eval_total_loss, samples_per_second])

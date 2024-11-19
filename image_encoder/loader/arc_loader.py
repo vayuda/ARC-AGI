@@ -35,7 +35,7 @@ def get_dataloader(filename, loader_params):
             loader_params (dict): Dictionary of our loader parameters
     """
     fp = _get_data_fp(filename)
-    dataset = ARCDatasetWrapper(TxtDictDataset(fp), pad_images=loader_params['pad_images'], percent_mask=loader_params['percent_mask'])
+    dataset = ARCDatasetWrapper(TxtDictDataset(fp), pad_images=loader_params['pad_images'], percent_mask=loader_params['percent_mask'], place_central=loader_params['place_central'])
     dataloader = ARCDataLoader(dataset, batch_size=loader_params['batch_size'], shuffle=loader_params['shuffle'])
     return dataloader
 
@@ -71,7 +71,7 @@ class TxtDictDataset(Dataset):
 
 
 class ARCDatasetWrapper:
-    def __init__(self, dataset, pad_images=False, percent_mask=0.1, pad_to_32x32=False):
+    def __init__(self, dataset, pad_images=False, percent_mask=0.1, pad_to_32x32=False, place_central=False):
         """
         Wrapper for TxtDictDataset to apply additional processing.
         
@@ -85,6 +85,7 @@ class ARCDatasetWrapper:
         self.dataset = dataset
         self.pad_images = pad_images
         self.percent_mask = percent_mask
+        self.place_central = place_central
         self.crop_args = {
             'min_crop_shape': 3,
             'max_crop': 5
@@ -102,27 +103,45 @@ class ARCDatasetWrapper:
         transformed_image_masks = self.get_image_mask(transformed_images)
         # transformed_image = self.global_crop(transformed_image)
         if self.pad_images:
-            images = self.pad_to_32x32(images)
-            image_masks = self.pad_to_32x32(image_masks)
-            transformed_images = self.pad_to_32x32(transformed_images)
-            transformed_image_masks = self.pad_to_32x32(transformed_image_masks)
+            images, image_offset = self.pad_to_32x32(images)
+            image_masks, _ = self.pad_to_32x32(image_masks, image_offset)
+            transformed_images, _ = self.pad_to_32x32(transformed_images, image_offset)
+            transformed_image_masks, _ = self.pad_to_32x32(transformed_image_masks, image_offset)
         return key, images, image_masks, transformed_images, transformed_image_masks
 
-    def pad_to_32x32(self, image):
-        """Pads the input image tensor to 32x32 with custom padding rules."""        
-        height, width = image.shape
+    def pad_to_32x32(self, image, offset=None, rand_pos=True):
+        """Pads the input image tensor to 32x32 with custom padding rules."""
+        height, width = image.shape        
         if height == 32 and width == 32:
-            return image  # No padding needed if already 32x32
+            return image, (0, 0)
         
-        # Add '11' padding on the right and bottom edges
-        padded_image = torch.nn.functional.pad(image, (0, 1, 0, 1), value=11)
+        # Create a 1-pixel border of '11' around the image
+        bordered_image = torch.nn.functional.pad(image, (1, 1, 1, 1), value=11)
+        cropped_image = bordered_image[:32, :32]    # Ensure 32 x 32
+        height, width = cropped_image.shape
+        pad_bottom = max(0, 32 - height)
+        pad_right = max(0, 32 - width)
         
-        # Fill remaining space to reach 32x32 with '12'
-        pad_bottom = max(0, 32 - padded_image.shape[0])
-        pad_right = max(0, 32 - padded_image.shape[1])
-        final_padded_image = torch.nn.functional.pad(padded_image, (0, pad_right, 0, pad_bottom), value=12)
+        # Determine offset
+        if self.place_central:
+            x = pad_right // 2
+            y = pad_bottom // 2
+        elif offset is not None:
+            x, y = offset
+        elif rand_pos:
+            x = random.randint(0, pad_right)
+            y = random.randint(0, pad_bottom)
+        else:
+            x, y = 0, 0
         
-        return final_padded_image
+        # Pad to place the image within the 32x32 frame
+        padded_image = torch.nn.functional.pad(
+            cropped_image, 
+            (x, pad_right - x, y, pad_bottom - y), 
+            value=12
+        )
+        
+        return padded_image, (x, y)        
 
     def shuffle_colors(self, image):
         """Apply a random color mapping to shuffle integers from 0 to 9 in place, avoiding double-mapping issues."""
