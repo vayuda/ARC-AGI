@@ -4,17 +4,19 @@ import numpy as np
 from objects import ARC_Object
 
 
-def extract_objects(source_object, method='color', print_on_init=False):
+def extract_objects(source_object, method='color', freq_scale=True, print_on_init=False):
     """
         Given an ARC_Object and extraction method, return a list of sub-objects for that ARC_Object.
 
         Args:
             object (ARC_Object): The input image.
             method (str): The method to use for object extraction. Options are 'color' and 'contour'.
+            freq_scale (bool): If true, convert the image to grayscale and scale based on freqs 
             print_on_init (bool): If True, print the grid upon initialization of the object.    
     """
     objects = []
     image = source_object.get_grid()
+    
 
     if method == 'color':
         color_masks = get_color_masks(image)
