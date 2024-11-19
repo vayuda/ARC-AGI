@@ -16,5 +16,5 @@ def get_encoder(filename, use_device=False):
     else:
         device = 'cpu'
       
-    ViT = VisionTransformer.load_model('trained_models/vit_20241110_75k.pth')
+    ViT = VisionTransformer.load_model(filename)
     return ViT.to(device)

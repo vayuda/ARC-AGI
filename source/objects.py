@@ -6,6 +6,7 @@ class ARC_Object:
     def __init__(self, image, mask, parent=None):
         """
             ARC_Object class to store the grid and other information of the object in the image.
+            Note: All pixels with value of '12' are 'padding' pixels.
 
             Args:
                 image (numpy.ndarray): A 2D numpy array representing the image.
@@ -25,9 +26,9 @@ class ARC_Object:
         self.parent = parent
         self.children = set()
         self.embedding = None
-        # Get grid
-        self.grid = (image * mask)[self.top_left[0]:self.top_left[0] + self.height,
-                                 self.top_left[1]:self.top_left[1] + self.width]
+        image = np.where(mask == 0, 12, image)
+        self.grid = image[self.top_left[0]:self.top_left[0] + self.height,
+                          self.top_left[1]:self.top_left[1] + self.width]
 
 
     def set_parent(self, parent):
