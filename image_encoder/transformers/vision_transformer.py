@@ -111,7 +111,7 @@ class VisionTransformer(nn.Module):
         head=False,
         output_classes=13,
         print_statements=True,
-        device='cuda',
+        device='cpu',
         **kwargs
     ):
         """
@@ -143,11 +143,11 @@ class VisionTransformer(nn.Module):
         self.head = head
         self.pos_enc = pos_enc
 
-        self.patch_embeddings = nn.Embedding(num_embeddings=unique_patches+1, embedding_dim=embed_dim)
+        self.patch_embeddings = nn.Embedding(num_embeddings=unique_patches+1, embedding_dim=embed_dim, device=device)
         self.mask_token = unique_patches    # Token id for the masking token
-        self.cls_token  = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token  = nn.Parameter(torch.zeros(1, 1, embed_dim, device=device))
         if pos_enc == "Sinusoidal":
-            self.register_buffer('sinusoidal_enc', self.get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=1000))
+            self.register_buffer('sinusoidal_enc', self.get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=1000).to(device))
         
         self.blocks = nn.Sequential(*[Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate, attn_drop=attn_drop_rate, pos_enc=pos_enc) for i in range(depth)])
             
@@ -227,11 +227,13 @@ class VisionTransformer(nn.Module):
             state_dict['sinusoidal_enc'] = state_dict.pop('pos_enc')
             if print_statements:
                 print("Replaced 'pos_enc' with 'sinusoidal_enc' in state_dict.")
+        if 'device' in checkpoint['model_params']:
+            checkpoint['model_params']['device'] = device
         model = cls(**checkpoint['model_params'], print_statements=print_statements)
         model.load_state_dict(state_dict, strict=False)  # Allow missing/extra keys
         if print_statements:
             print(f"Model loaded from {path} on {device}")
-        return model
+        return model.to(device)
 
 
 

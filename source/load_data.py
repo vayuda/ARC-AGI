@@ -3,7 +3,7 @@ import json
 import torch
 from torch.utils.data import Dataset
 import numpy as np
-from objects import ARC_Object
+from .objects import ARC_Object
 
 TRAIN_DIR = '../data/training'
 EVAL_DIR = '../data/evaluation'

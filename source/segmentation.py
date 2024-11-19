@@ -1,10 +1,10 @@
 import cv2
 import numpy as np
 
-from objects import ARC_Object
+from .objects import ARC_Object
 
 
-def extract_objects(source_object, method='color', print_on_init=False):
+def extract_objects(source_object, method='color', print_on_init=False, embedding_model=None):
     """
         Given an ARC_Object and extraction method, return a list of sub-objects for that ARC_Object.
 
@@ -12,7 +12,8 @@ def extract_objects(source_object, method='color', print_on_init=False):
             object (ARC_Object): The input image.
             method (str): The method to use for object extraction. Options are 'color', 'contour', 'contour_scale'.
             freq_scale (bool): If true, convert the image to grayscale and scale based on freqs 
-            print_on_init (bool): If True, print the grid upon initialization of the object.    
+            print_on_init (bool): If True, print the grid upon initialization of the object.
+            embedding_model (torch.nn.Module): If provided, use this model to generate embeddings.    
     """
     objects = []
     image = source_object.get_grid()
@@ -23,7 +24,7 @@ def extract_objects(source_object, method='color', print_on_init=False):
         for mask in color_masks:
             if ((mask + padding).all() == 1) or np.array_equal(mask, padding):
                 continue   # Skip since same as before / just extracting padding
-            new_object = ARC_Object(image, mask, source_object)
+            new_object = ARC_Object(image=image, mask=mask, parent=source_object, embedding_model=embedding_model)
             if print_on_init:
                 new_object.plot_grid()
             
@@ -34,7 +35,7 @@ def extract_objects(source_object, method='color', print_on_init=False):
         for mask in contour_masks:
             if ((mask + padding).all() == 1) or np.array_equal(mask, padding):
                 continue   # Skip since same as before / just extracting padding
-            new_object = ARC_Object(image, mask, source_object)
+            new_object = ARC_Object(image=image, mask=mask, parent=source_object, embedding_model=embedding_model)
             if print_on_init:
                 new_object.plot_grid() 
             
@@ -45,7 +46,7 @@ def extract_objects(source_object, method='color', print_on_init=False):
         for mask in contour_masks:
             if ((mask + padding).all() == 1) or np.array_equal(mask, padding):
                 continue   # Skip since same as before / just extracting padding
-            new_object = ARC_Object(image, mask, source_object)
+            new_object = ARC_Object(image=image, mask=mask, parent=source_object, embedding_model=embedding_model)
             if print_on_init:
                 new_object.plot_grid() 
             
