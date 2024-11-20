@@ -1,16 +1,19 @@
+import torch
 import numpy as np
 
-from util import plot_image_and_mask
+from .util import plot_image_and_mask
 
 class ARC_Object:
-    def __init__(self, image, mask, parent=None):
+    def __init__(self, image, mask, parent=None, embedding_model=None):
         """
             ARC_Object class to store the grid and other information of the object in the image.
+            Note: All pixels with value of '12' are 'padding' pixels.
 
             Args:
                 image (numpy.ndarray): A 2D numpy array representing the image.
                 mask (numpy.ndarray): A 2D numpy array representing the mask of the object.
                 parent (ARC_Object): If provided, assign a pointer to your parent object.
+                embedding_model (torch.nn.Module): If provided, use this model to generate embeddings.
         """
         # Get our positional information and num active pixels
         self.active_pixels = np.sum(mask)
@@ -24,10 +27,13 @@ class ARC_Object:
         
         self.parent = parent
         self.children = set()
-        self.embedding = None
-        # Get grid
-        self.grid = (image * mask)[self.top_left[0]:self.top_left[0] + self.height,
-                                 self.top_left[1]:self.top_left[1] + self.width]
+        image = np.where(mask == 0, 12, image)
+        self.grid = image[self.top_left[0]:self.top_left[0] + self.height,
+                          self.top_left[1]:self.top_left[1] + self.width]
+        if embedding_model is not None:
+            self.set_embedding(embedding_model)
+        else:
+            self.embedding = None
 
 
     def set_parent(self, parent):
@@ -45,6 +51,13 @@ class ARC_Object:
     def get_grid(self):
         return self.grid
     
+
+    def set_embedding(self, embedding_model):
+        grid_tensor = torch.tensor(self.grid).unsqueeze(0).to(embedding_model.device)
+        with torch.no_grad():
+            cls_logits, _, _ = embedding_model(grid_tensor, save_attn=False, temperature=1)
+        self.embedding = cls_logits.squeeze(0).squeeze(0).cpu()
+
 
     def plot_grid(self):
         plot_image_and_mask(self.grid)

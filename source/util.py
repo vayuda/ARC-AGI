@@ -14,6 +14,8 @@ LIGHT_ORANGE = 7
 CYAN = 8
 RED = 9
 BORDER = 10
+IMAGEBORDER = 11
+PAD = 12
 
 COLOR_TO_HEX = {
     -1: '#FF6700',  # blaze orange
@@ -28,6 +30,8 @@ COLOR_TO_HEX = {
     8:  '#87D8F1',  # cyan
     9:  '#921231',  # red
     10: '#555555',  # border
+    11: '#FF6700',  # active grid border
+    12: '#D2B48C',  # image padding
 }
 
 def hex_to_rgb(hex_color):
@@ -71,13 +75,32 @@ def plot_image_and_mask(image, mask=None, title=""):
         yellow_tint = np.array([255, 255, 153]) / 255.0
         result_image[mask == 1] = result_image[mask == 1] * 0.6 + yellow_tint * 0.4
 
+    plt.figure(figsize=(3,3))
     plt.imshow(result_image)
     plt.title(title)
     plt.axis('off')
     plt.show()
     
+
+def plot_grayscale(grid):
+    """
+    Displays a NumPy grid of values (0-255) in grayscale.
     
+    Args:
+        grid (numpy.ndarray): A 2D NumPy array with values from 0 to 255.
+    """
+    if not isinstance(grid, np.ndarray):
+        raise TypeError("Input must be a NumPy array.")
+    if grid.ndim != 2:
+        raise ValueError("Input grid must be a 2D NumPy array.")
+    if np.min(grid) < 0 or np.max(grid) > 255:
+        raise ValueError("Grid values must be in the range 0-255.")
     
+    plt.imshow(grid, cmap='gray', vmin=0, vmax=255)
+    plt.axis('off')  # Turn off the axes for better display
+    plt.show()
+    
+
 def visualize_problem(puzzle_id: str):
     with open(f"data/training/{puzzle_id}.json", 'r') as f:
         data = json.load(f)
