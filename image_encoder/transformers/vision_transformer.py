@@ -231,6 +231,7 @@ class VisionTransformer(nn.Module):
             checkpoint['model_params']['device'] = device
         model = cls(**checkpoint['model_params'], print_statements=print_statements)
         model.load_state_dict(state_dict, strict=False)  # Allow missing/extra keys
+        model.device = device
         if print_statements:
             print(f"Model loaded from {path} on {device}")
         return model.to(device)
