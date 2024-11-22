@@ -1,7 +1,6 @@
 import numpy as np
 from typing import List, Tuple
-from objects import ARC_Object
-
+from .objects import ARC_Object
 
 # filter objects (List -> smaller List or single object)
 def filter_by_color(objects: List[ARC_Object], color: int) -> List[ARC_Object]:
@@ -117,7 +116,6 @@ def get_shape(obj: ARC_Object) -> np.ndarray:
     """
     return obj.grid != 0
 
-
 def get_contour(obj: ARC_Object) -> np.ndarray:
     """
     Get the contour of the object as a bit mask.
@@ -168,4 +166,3 @@ def getOverlap(obj1: ARC_Object, obj2: ARC_Object) -> bool:
     mask1 = obj1.grid != 0
     mask2 = obj2.grid != 0
     return mask1 & mask2
-

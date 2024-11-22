@@ -4,6 +4,13 @@ from collections import deque
 
 from .objects import ARC_Object
 
+SEG_METHODS = {
+    1: 'color',
+    2: 'contour',
+    3: 'contour_scale',
+    4: 'loop',
+}
+
 def extract_objects(source_object, method='color', print_on_init=False, embedding_model=None):
     """
         Given an ARC_Object and extraction method, return a list of sub-objects for that ARC_Object.
