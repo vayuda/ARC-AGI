@@ -44,6 +44,16 @@ def translate(obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
     new_top_left_x = new_obj.top_left[0] + direction[0]
     new_top_left_y = new_obj.top_left[1] + direction[1]
 
+    if new_top_left_x + obj.height <= 0:
+        new_top_left_x = 1 - obj.height
+    elif new_top_left_x >= obj.height:
+        new_top_left_x = obj.height - 1
+
+    if new_top_left_y + obj.width <= 0:
+        new_top_left_y = 1 - obj.width
+    elif new_top_left_y >= obj.width:
+        new_top_left_y = obj.width - 1
+
     src_x_start = max(0, -new_top_left_x)
     src_y_start = max(0, -new_top_left_y)
     src_x_end = min(obj.height, new_obj.height - new_top_left_x)
