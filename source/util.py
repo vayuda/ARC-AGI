@@ -2,20 +2,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 import json
+from enum import IntEnum
 
-BLACK = 0
-BLUE = 1
-ORANGE = 2
-GREEN = 3
-YELLOW = 4
-GREY = 5
-PINK = 6
-LIGHT_ORANGE = 7
-CYAN = 8
-RED = 9
-BORDER = 10
-IMAGEBORDER = 11
-PAD = 12
+class Color(IntEnum):
+# Commented some colors out so they cannot be randomly chosen as parameters for dsl operations
+    # BLACK = 0
+    BLUE = 1
+    ORANGE = 2
+    GREEN = 3
+    YELLOW = 4
+    GREY = 5
+    PINK = 6
+    LIGHT_ORANGE = 7
+    CYAN = 8
+    RED = 9
+    # BORDER = 10
+    # IMAGEBORDER = 11
+    # PAD = 12
 
 COLOR_TO_HEX = {
     -1: '#FF6700',  # blaze orange

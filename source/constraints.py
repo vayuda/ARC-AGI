@@ -311,7 +311,6 @@ def get_shape(obj: ARC_Object) -> np.ndarray:
     """
     return obj.mask
 
-
 def get_contour(obj: ARC_Object) -> np.ndarray:
     """
     Get the contour of the object as a bit mask.
@@ -362,24 +361,3 @@ def getOverlap(obj1: ARC_Object, obj2: ARC_Object) -> bool:
     mask1 = obj1.grid != 0
     mask2 = obj2.grid != 0
     return mask1 & mask2
-
-# 8n+3 possible values to test
-returns_an_int_arity_1 = [
-    get_color,
-    get_size,
-    get_width,
-    get_height,
-    get_latitude,
-    get_longitude,
-]
-returns_an_int_arity_2 = [
-    lattitude_dist,
-    longitude_dist,
-]
-
-returns_a_list_from_list = [
-    filter_by_color,
-    filter_by_shape,
-    filter_by_size,
-]
-
