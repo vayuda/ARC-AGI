@@ -36,6 +36,11 @@ def transpose(obj: ARC_Object) -> ARC_Object:
     new_obj.grid = new_obj.grid.T
     return new_obj
 
+def translate(obj: ARC_Object, dy: int, dx: int) -> ARC_Object:
+    new_obj = deepcopy(obj)
+    new_obj.top_left = (new_obj.top_left[0] + dy, new_obj.top_left[1] + dx)
+    return new_obj
+
 # top_left and size are (width, height) 
 def crop(obj: ARC_Object, top_left: Tuple[int, int], size: Tuple[int, int]) -> ARC_Object:
     image = obj.grid[top_left[1] : top_left[1] + size[1], top_left[0] : top_left[0] + size[0]]
@@ -127,12 +132,12 @@ def tile(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int], end: in
         new_tile.top_left = new_pos
         cur_pos = new_pos
 
-def draw(base: ARC_Object, tile: ARC_Object, position: Tuple[int, int]) -> ARC_Object:
+def draw(base: ARC_Object, tile: ARC_Object, y, x) -> ARC_Object:
     """
     Draw the tile on the base object at the given position.
     
     """
-    base.grid[position[0] : position[0] + tile.height, position[1] : position[1] + tile.width] = tile.grid
+    base.grid[y : y + tile.height, x : x + tile.width] = tile.grid
 
 def draw_line(base: ARC_Object, start: Tuple[int, int], end: Tuple[int, int], color: int) -> ARC_Object:
     """

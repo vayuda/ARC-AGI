@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 from collections import deque
 
-from .objects import ARC_Object
+from objects import ARC_Object
 
-def extract_objects(source_object, method='color', print_on_init=False, embedding_model=None):
+def extract_objects(source_object, method='monochrome-contour', print_on_init=False, embedding_model=None):
     """
         Given an ARC_Object and extraction method, return a list of sub-objects for that ARC_Object.
 
@@ -16,7 +16,8 @@ def extract_objects(source_object, method='color', print_on_init=False, embeddin
             embedding_model (torch.nn.Module): If provided, use this model to generate embeddings.    
     """
     objects = []
-    image = source_object.get_grid()
+    if type(source_object) == ARC_Object:
+        image = source_object.get_grid()
     padding = np.where(image == 12, 1, 0)
 
     if method == 'color':
@@ -52,14 +53,17 @@ def extract_objects(source_object, method='color', print_on_init=False, embeddin
             
             objects.append(new_object)
             source_object.add_child(new_object)
-    elif method == 'loop':
-        loops = get_loops(image)
-        for loop_mask in loops:
-            loop_object = ARC_Object(image, loop_mask, source_object)
+    elif method == 'monochrome_contour':
+        if print_on_init:
+            print('Source Object')
+            source_object.plot_grid()
+        arc_objects = get_monochrome_contour(image)
+        for object in arc_objects:
             if print_on_init:
-                loop_object.plot_grid()
-            objects.append(loop_object)
-            source_object.add_child(loop_object)
+                print('New Object')
+                object.plot_grid()
+            source_object.add_child(object)
+        return arc_objects
     else:
         raise ValueError(f"Invalid method: {method}")
 
@@ -133,84 +137,53 @@ def get_contour_masks(image, freq_scale):
     
     return contour_masks, hierarchy
 
-def get_loops(image):
+def get_monochrome_contour(image):
     """
-    Detect loops for each color in an integer array using flood fill with 8-connectivity.
+    Detect objects for each color in an integer array using flood fill with 8-connectivity.
     
     Args:
         image: 2D numpy array where integers represent different colors
         
     Returns:
-        A list of Arc Objects, each representing a loop of a specific color
+        A list of Arc Objects, each representing an object of a specific color
     """
     # Create a copy of the image to avoid modifying the original
     visited = np.zeros_like(image)
     # Dictionary to store loops for each color
-    loops = []
+    objects = []
     h,w = image.shape
                 
     for i in range(h):
         for j in range(w):
-            if visited[i, j] != 1:  # Unvisited pixel
+            if visited[i, j] == 0 and image[i,j] != 0:  # Unvisited non black pixel
                 color = image[i, j]
                 loop_mask = np.zeros_like(image)
-                loop_coords = cbfs(image, j, i, color)
-                for x, y in loop_coords:
+                loop_coords = cbfs(image, i, j)
+                for y, x in loop_coords:
                     loop_mask[y, x] = 1
                     visited[y, x] = 1
                     
-                #find internal point
-                ipx, ipy = -1,-1
-                for x, y in loop_coords:
-                    # Check all adjacent points
-                    for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-                        ipx, ipy = x + dx, y + dy
-                        if (0 <= ipx < w and 
-                            0 <= ipy < h and 
-                            loop_mask[ipy, ipx] == 0):
-                            # Count walls in each direction from this point
-                            wall_counts = [0, 0, 0, 0]
-                            
-                            # Count walls to the right
-                            wall_counts[0] = np.sum(loop_mask[ipy, ipx:])
-                            # Count walls to the left
-                            wall_counts[2] = np.sum(loop_mask[ipy, :ipx])
-                            # Count walls down
-                            wall_counts[1] = np.sum(loop_mask[ipy:, ipx])
-                            # Count walls up
-                            wall_counts[3] = np.sum(loop_mask[:ipy, ipx])
-                            
-                            # If we have walls in all directions, this is an internal point
-                            if min(wall_counts) == 1:
-                                break
-                            
-                # no internal points so not a loop
-                if ipx == -1:
-                    continue
-                # print("found internal point: ", ipx, ipy)
-                #find bounded space
-                internal_space = cbfs(loop_mask, ipx, ipy, 0)
-                # space is not bounded by loop
-                if len(internal_space) + len(loop_coords) ==h*w:
-                    continue
-                bounded_space_mask = np.zeros_like(image)
-                for x, y in internal_space:
-                    bounded_space_mask[y, x] = 1
-                
-                
-                
-                loops.append((loop_mask, bounded_space_mask))
-    return loops
+                objects.append(ARC_Object(image, loop_mask,color=color,start=(i,j)))
+    return objects
 
-# color bfs
-def cbfs(image: np.array, x: int, y: int, target_color: int):
-    frontier = deque([(x, y)])
+
+def cbfs(image: np.array, y: int, x: int):
+    '''
+    Returns the coordinates of all pixels connected to the starting pixel (x, y) with the same color as the start color.
+    
+    Args:
+        image: 2D numpy array representing the image
+        x: x-coordinate of the starting pixel
+        y: y-coordinate of the starting pixel
+    '''
+    frontier = deque([(y, x)])
     visited = set()
+    target_color = image[y, x]
     while frontier:
-        x, y = frontier.popleft()
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < image.shape[1] and 0 <= ny < image.shape[0] and image[ny, nx] == target_color and (nx, ny) not in visited:
-                frontier.append((nx, ny))
-                visited.add((nx, ny))
+        y, x = frontier.popleft()
+        for dy, dx in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)]:
+            ny, nx = y + dy, x + dx
+            if 0 <= nx < image.shape[1] and 0 <= ny < image.shape[0] and image[ny, nx] == target_color and (ny, nx) not in visited:
+                frontier.append((ny, nx))
+                visited.add((ny, nx))
     return visited
