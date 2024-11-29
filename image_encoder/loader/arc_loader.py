@@ -7,6 +7,8 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from .. import training_dsl as training_dsl
+
 
 # ========================================================================
 # Easy calls for external use
@@ -71,7 +73,7 @@ class TxtDictDataset(Dataset):
 
 
 class ARCDatasetWrapper:
-    def __init__(self, dataset, pad_images=False, percent_mask=0.1, pad_to_32x32=False, place_central=False):
+    def __init__(self, dataset, evaluate=False, pad_images=False, percent_mask=0.1, pad_to_32x32=False, place_central=False):
         """
         Wrapper for TxtDictDataset to apply additional processing.
         
@@ -86,29 +88,76 @@ class ARCDatasetWrapper:
         self.pad_images = pad_images
         self.percent_mask = percent_mask
         self.place_central = place_central
+        self.evaluate = evaluate
         self.crop_args = {
             'min_crop_shape': 3,
             'max_crop': 5
+        }
+        self.init_transformations = {
+            'mask_only': False,
+            'u_offset': None,
+            'v_offset': None,
+            'translation': 0,
+            'shuffle_colors': 0,
+            'rotate': 0,
+            'vertical_mirror': 0,
+            'horizontal_mirror': 0,
+            'resize': 0
         }
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        key, images = self.dataset[idx]        
-        image_masks = self.get_image_mask(images)
-        
-        transformed_images = images.clone()
-        transformed_images = self.shuffle_colors(transformed_images)
-        transformed_image_masks = self.get_image_mask(transformed_images)
-        # transformed_image = self.global_crop(transformed_image)
-        if self.pad_images:
-            images, image_offset = self.pad_to_32x32(images)
-            image_masks, _ = self.pad_to_32x32(image_masks, image_offset)
-            transformed_images, _ = self.pad_to_32x32(transformed_images, image_offset)
-            transformed_image_masks, _ = self.pad_to_32x32(transformed_image_masks, image_offset)
-        return key, images, image_masks, transformed_images, transformed_image_masks
+        problem_id, u = self.dataset[idx]        
+        u_mask = self.get_image_mask(u)
 
+        # Will be storing transformations applied to each image in a dict
+        transformations = self.init_transformations.copy()
+        transformations['mask_only'] = self.evaluate
+        
+        # Create transformed image
+        v = u.clone()
+        if transformations['mask_only']:
+            v_mask = self.get_image_mask(v)
+        else:
+            v, transformations = self.apply_encoder_dsl(v, transformations)
+            v_mask = self.get_image_mask(v)
+
+        # Pad images if set to self_padding
+        if self.pad_images:
+            u, u_offset = self.pad_to_32x32(u)
+            u_mask = self.pad_mask_to_32x32(u_mask, u_offset)
+            
+            transformations['u_offset'] = u_offset
+            v_offset = u_offset if transformations['mask_only'] else None
+
+            v, v_offset = self.pad_to_32x32(v, v_offset)
+            v_mask = self.pad_mask_to_32x32(v_mask, v_offset)
+            transformations['v_offset'] = v_offset
+            t_magnitude = (((u_offset[0] - v_offset[0])**2 + (u_offset[1] - v_offset[1])**2)**0.5)
+            transformations['translation'] = t_magnitude if t_magnitude < 1 else t_magnitude**0.5
+        return problem_id, u, u_mask, v, v_mask, transformations
+
+    def apply_encoder_dsl(self, image, transformations):
+        """Accepts a 2-D pytorch tensor (H x W) and returns the transformed version of that image and the transformations applied"""
+        if random.random() < 0.4:
+            image, i = training_dsl.shuffle_colors(image)
+            transformations['shuffle_colors'] = i
+        if random.random() < 0.4:
+            image, i = training_dsl.rotate(image)
+            transformations['rotate'] = i
+        if random.random() < 0.4:
+            image, i = training_dsl.vertical_mirror(image)
+            transformations['vertical_mirror'] = i
+        if random.random() < 0.4:
+            image, i = training_dsl.horizontal_mirror(image)
+            transformations['horizontal_mirror'] = i
+        if random.random() < 0.7:
+            image, i = training_dsl.resize(image)
+            transformations['resize'] = i
+        return image, transformations
+    
     def pad_to_32x32(self, image, offset=None, rand_pos=True):
         """Pads the input image tensor to 32x32 with custom padding rules."""
         height, width = image.shape        
@@ -140,8 +189,16 @@ class ARCDatasetWrapper:
             (x, pad_right - x, y, pad_bottom - y), 
             value=12
         )
-        
         return padded_image, (x, y)        
+
+    def pad_mask_to_32x32(self, mask, offset):
+        x, y = offset
+        x += 1
+        y += 1  # Need to account for the 1 pixel border
+        H, W = mask.shape
+        padded_mask = torch.zeros((32, 32), dtype=mask.dtype, device=mask.device)
+        padded_mask[y:y+H, x:x+W] = mask
+        return padded_mask
 
     def shuffle_colors(self, image):
         """Apply a random color mapping to shuffle integers from 0 to 9 in place, avoiding double-mapping issues."""
@@ -176,10 +233,6 @@ class ARCDatasetWrapper:
         """Generate an image mask with values 0 and 1 based on the percent_mask probability."""
         height, width = image.shape
         mask = torch.bernoulli(torch.full((height, width), self.percent_mask)).int()
-        if self.pad_images:
-            pad_bottom = max(0, 32 - height)
-            pad_right = max(0, 32 - width)
-            mask = torch.nn.functional.pad(mask, (0, pad_right, 0, pad_bottom), value=0)
         return mask
 
 
@@ -197,4 +250,5 @@ class ARCDataLoader(DataLoader):
         image_masks = [item[2] for item in batch]
         transformed_images = [item[3] for item in batch]
         transformed_image_masks = [item[4] for item in batch]
-        return keys, torch.stack(images), torch.stack(image_masks), torch.stack(transformed_images), torch.stack(transformed_image_masks)
+        transformations = [item[5] for item in batch]
+        return keys, torch.stack(images), torch.stack(image_masks), torch.stack(transformed_images), torch.stack(transformed_image_masks), transformations

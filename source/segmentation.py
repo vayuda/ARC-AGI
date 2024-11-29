@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from collections import deque
 
-from objects import ARC_Object
+from .objects import ARC_Object
 
 SEG_METHODS = {
     1: 'color',

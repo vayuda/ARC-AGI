@@ -1,12 +1,7 @@
 import numpy as np
 from typing import List, Tuple
-from load_data import quick_load
-from util import visualize_problem
-from segmentation import extract_objects
-from embedding import load_ViT
-from objects import ARC_Object
-from dsl import *
-from constraints import RelationGraph
+from source import *
+
 # see also: 1e0a9b12
 # problem = quick_load('1caeab9d',dir='training')
 problem = quick_load('1e0a9b12',dir='training')

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from util import plot_image_and_mask
+from .util import plot_image_and_mask
 
 class ARC_Object:
     def __init__(self, image, mask=None, start=None, color=None, parent=None, embedding_model=None):

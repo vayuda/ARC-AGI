@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List, Tuple
-from objects import ARC_Object
+from .objects import ARC_Object
 import networkx as nx
 import matplotlib.pyplot as plt
 

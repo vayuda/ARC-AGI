@@ -20,6 +20,8 @@ class Color(IntEnum):
     # IMAGEBORDER = 11
     # PAD = 12
 
+BORDER = 10
+
 COLOR_TO_HEX = {
     -1: '#FF6700',  # blaze orange
     0:  '#000000',  # black

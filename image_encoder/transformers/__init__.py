@@ -1,5 +1,5 @@
 import torch
-from .vision_transformer import VisionTransformer
+from .vision_transformer import VisionTransformer, TransformationEmbeddings
 
 
 def get_encoder(filename, print_statements=True, device='cpu'):

@@ -14,10 +14,9 @@ import matplotlib.patches as patches
 # ========================================================================
 # Loss Functions
 # ========================================================================
-def compute_loss(u, u_masks, v, v_masks, student_net, teacher_net, nce_weight, device):
+def compute_loss(u, u_masks, v, v_masks, student_net, teacher_net, transformations, transformation_embeddings):
     B, H, W = u.shape
-    u, u_masks, v, v_masks = u.to(device), u_masks.to(device), v.to(device), v_masks.to(device)
-
+    
     # Forward pass
     u_s_class, u_s_patch, _ = student_net(u, u_masks)
     u_t_class, u_t_patch, _ = teacher_net(u)
@@ -25,29 +24,23 @@ def compute_loss(u, u_masks, v, v_masks, student_net, teacher_net, nce_weight, d
     v_t_class, v_t_patch, _ = teacher_net(v)
     
     # Compute loss
-    u_masks, v_masks = u_masks.view(B, H*W), v_masks.view(B, H*W)
-    patch_rmse = _compute_patch_rmse(u_s_patch, u_t_patch, v_s_patch, v_t_patch, u_masks, v_masks) * (1 - nce_weight)
-    class_nce = _compute_class_infoNCE(u_s_class, u_t_class, v_s_class, v_t_class) * nce_weight
-    return patch_rmse, class_nce
-
-def _compute_patch_rmse(u_s, u_t, v_s, v_t, u_mask, v_mask):
-    """ Computing patch token recovery loss per iBOT """
-    u_s, u_t = u_s[u_mask == 1], u_t[u_mask == 1]    # N_1 x C. Notice how it gets rid of concept of batches here (since batches have different number of masked tokens)
-    v_s, v_t = v_s[v_mask == 1], v_t[v_mask == 1]    # N_2 x C
-
-    u_loss = torch.sqrt(((u_s - u_t)**2).mean(dim=1)).mean()
-    v_loss = torch.sqrt(((v_s - v_t)**2).mean(dim=1)).mean()
-    return u_loss + v_loss
-    
-
-def _compute_class_rmse(u_s_class, u_t_class, v_s_class, v_t_class):
-    """ Computing class token cross-loss per iBOT. Each input is of shape 'B x 1 x C' """
-    loss_1 = torch.sqrt(((u_s_class - v_t_class)**2).mean(dim=(1, 2))).mean()
-    loss_2 = torch.sqrt(((u_t_class - v_s_class)**2).mean(dim=(1, 2))).mean()
+    u_s_class, u_t_class = u_s_class.squeeze(1), u_t_class.squeeze(1)   # B x dim
+    v_s_class, v_t_class = v_s_class.squeeze(1), v_t_class.squeeze(1)
+    t_delta = get_transformation_vector(transformations, transformation_embeddings)
+    loss_1 = _compute_infoNCE_loss(u_s_class, v_t_class-t_delta)
+    loss_2 = _compute_infoNCE_loss(u_t_class, v_s_class-t_delta)
     return loss_1 + loss_2
 
 
-def _compute_infoNCE_loss(embeddings_1, embeddings_2, temperature=0.5):
+def get_transformation_vector(transformations, transformation_embeddings):
+    vecs = []
+    transformation_embeddings.normalize()
+    for t in transformations:
+        vecs.append(transformation_embeddings.get_embedding(t))
+    return torch.stack(vecs).to(transformation_embeddings.device)
+
+
+def _compute_infoNCE_loss(embeddings_1, embeddings_2, temperature=1):
     """Compute InfoNCE loss between two sets of embeddings.
        Each input should have shape [B, C], where matching indices are positive pairs."""
     B = embeddings_1.shape[0]    
@@ -59,29 +52,18 @@ def _compute_infoNCE_loss(embeddings_1, embeddings_2, temperature=0.5):
     return loss
 
 
-def _compute_class_infoNCE(u_s_class, u_t_class, v_s_class, v_t_class, temperature=0.5):
-    """Compute class token InfoNCE loss for iBOT. Each input has shape [B, 1, C]."""
-    u_s_class, u_t_class = u_s_class.squeeze(1), u_t_class.squeeze(1)
-    v_s_class, v_t_class = v_s_class.squeeze(1), v_t_class.squeeze(1)
-    
-    loss_1 = _compute_infoNCE_loss(u_s_class, v_t_class, temperature)
-    loss_2 = _compute_infoNCE_loss(u_t_class, v_s_class, temperature)
-    return loss_1 + loss_2
-
-
-def get_eval_loss(student_net, teacher_net, loader, nce_weight, device, max_eval_iters=None):
+def get_eval_loss(student_net, teacher_net, loader, transformation_embeddings, device, max_eval_iters=None):
     with torch.no_grad():
-        eval_patch, eval_class, loss_iters = 0, 0, 0
-        for _, (ids, u, u_masks, v, v_masks) in enumerate(loader):          
-            loss_iters += 1
-            patch_loss, class_loss = compute_loss(u, u_masks, v, v_masks, student_net, teacher_net, nce_weight, device)
-
-            eval_patch += patch_loss.cpu().item()
-            eval_class += class_loss.cpu().item()
+        eval_loss, loss_iters = 0, 0
+        for _, (ids, u, u_masks, v, v_masks, transformations) in enumerate(loader):
+            u, u_masks, v, v_masks = u.to(device), u_masks.to(device), v.to(device), v_masks.to(device)
+            loss_iters += 1            
+            loss = compute_loss(u, u_masks, v, v_masks, student_net, teacher_net, transformations, transformation_embeddings)
+            eval_loss += loss.cpu().item()
             if max_eval_iters is not None and loss_iters == max_eval_iters:
                 break
     
-    return (eval_patch/loss_iters), (eval_class/loss_iters)
+    return (eval_loss/loss_iters)
 
 
 
@@ -190,7 +172,7 @@ def plot_tensor_with_highlight(tensor, idx=None):
         x, y = (idx - 1) % width, (idx - 1) // width  # Convert idx to (x, y) in 32x32 grid
     
     # Convert the tensor to RGB using COLOR_TO_HEX mapping
-    tensor_np = tensor.numpy().squeeze().astype(int)  # Ensure 2D and integer type
+    tensor_np = tensor.numpy().astype(int)  # Ensure 2D and integer type
     img_rgb = np.array([[hex_to_rgb(COLOR_TO_HEX[val]) for val in row] for row in tensor_np])
     
     # Plot the tensor with grid lines
@@ -216,7 +198,7 @@ def plot_tensor_with_highlight(tensor, idx=None):
 # ========================================================================
 # Misc
 # ========================================================================
-def top_k_cosine_similarity(tensor, idx, k, largest=True):
+def top_k_cosine_similarity(tensor, idx, k, delta_vec=None, largest=True):
     """
     Compute the cosine similarity of a specified vector (indexed by `idx`) 
     against all other vectors in `tensor` and return the indices and similarity values 
@@ -233,7 +215,10 @@ def top_k_cosine_similarity(tensor, idx, k, largest=True):
         torch.Tensor: 1D tensor of similarity values for the top k most (or least) similar vectors.
     """
     normalized_tensor = torch.nn.functional.normalize(tensor, dim=1)
-    reference_vector = normalized_tensor[idx].unsqueeze(0)  # Shape: 1 x d
+    reference_vector = normalized_tensor[idx].unsqueeze(0).clone()  # Shape: 1 x d
+    if delta_vec is not None:
+        reference_vector -= delta_vec
+        reference_vector = torch.nn.functional.normalize(reference_vector, dim=1)
     cosine_similarities = torch.matmul(normalized_tensor, reference_vector.T).squeeze()  # Shape: n
     top_k_values, top_k_indices = torch.topk(cosine_similarities, k=k, largest=largest)
     return top_k_indices, top_k_values
@@ -255,29 +240,13 @@ def setup_csv_logger(log_dir='logs'):
 
     with open(csv_file, mode='w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Sample_Num', 'Train_Patch_Loss', 'Train_Class_Loss', 'Train_Total_Loss', 
-                         'Eval_Patch_Loss', 'Eval_Class_Loss', 'Eval_Total_Loss', 'Samples_per_Second'])
+        writer.writerow(['Sample_Num', 'Train_Loss', 'Eval_Loss', 'Samples_per_Second'])
 
     return csv_file
 
 
-def log_to_csv(csv_file, sample_num, train_patch_loss, train_class_loss, train_total_loss, 
-               eval_patch_loss, eval_class_loss, eval_total_loss, samples_per_second):
-    """
-    Append training and evaluation metrics to the CSV file.
-
-    Args:
-        csv_file (str): Path to the CSV file.
-        sample_num (int): Cumulative number of samples processed.
-        train_patch_loss (float): Training patch loss.
-        train_class_loss (float): Training class loss.
-        train_total_loss (float): Total training loss.
-        eval_patch_loss (float): Evaluation patch loss.
-        eval_class_loss (float): Evaluation class loss.
-        eval_total_loss (float): Total evaluation loss.
-        samples_per_second (float): Processing speed in samples per second.
-    """
+def log_to_csv(csv_file, sample_num, train_loss, eval_loss, samples_per_second):
+    """ Append training and evaluation metrics to the CSV file. """
     with open(csv_file, mode='a', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([sample_num, train_patch_loss, train_class_loss, train_total_loss,
-                         eval_patch_loss, eval_class_loss, eval_total_loss, samples_per_second])
+        writer.writerow([sample_num, train_loss, eval_loss, samples_per_second])

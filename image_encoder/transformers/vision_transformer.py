@@ -10,6 +10,52 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
+class TransformationEmbeddings(nn.Module):
+    def __init__(self, dim, transformations, device='cpu'):
+        """
+        Given an embedding dimension (dim) and a list of strings (transformations), 
+        creates an nn.Embedding associated with each transformation.
+        
+        Args:
+            dim (int): Embedding dimension.
+            transformations (list of str): List of transformation names.
+            device (str): Device for the embedding layer.
+        """
+        super().__init__()
+        self.transformations = transformations
+        self.dim = dim
+        self.device = device
+        self.ttoi = {t: i for i, t in enumerate(transformations)}
+        self.itot = {i: t for i, t in enumerate(transformations)}
+        self.embs = nn.Embedding(num_embeddings=len(transformations), embedding_dim=dim, device=device)
+
+    def get_embedding(self, transformations):
+        """
+        Fetches the embedding vector associated with a given transformation.
+
+        Args:
+            transformations (dict): Dictionary of transformations.
+
+        Returns:
+            torch.Tensor: The embedding vector for the transformation.
+        """
+        vec = torch.zeros(self.dim, device=self.device)
+        for k, v in transformations.items():
+            if k in self.ttoi:
+                vec += self.embs(torch.tensor(self.ttoi[k], device=self.device)) * v
+        return vec
+
+    def normalize(self):
+        with torch.no_grad():
+            self.embs.weight.data = F.normalize(self.embs.weight.data, p=2, dim=1)
+    
+    @classmethod
+    def load_embeddings(cls, dim, transformations, device, embeddings):
+        instance = cls(dim, transformations, device=device)
+        instance.embs.load_state_dict(embeddings)
+        return instance
+
+    
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=4, qkv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
@@ -75,14 +121,14 @@ class Block(nn.Module):
         pos_enc='Sinusoidal'
     ):
         super().__init__()
-        self.norm1 = norm_layer(dim)
         if pos_enc == 'Sinusoidal':
-            self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+            self.attn = Attention(dim=dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
         elif pos_enc == 'RoPE':
             self.attn = RoPEAttention(dim=dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
         else:
             raise ValueError(f"'pos_enc' must be either 'Sinusoidal' or 'RoPE' - instead is '{pos_enc}'")
         
+        self.norm1 = norm_layer(dim)
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
@@ -108,6 +154,7 @@ class VisionTransformer(nn.Module):
         drop_rate=0.0,
         attn_drop_rate=0.0,
         pos_enc='Sinusoidal',
+        sinusoidal_theta=10000,
         head=False,
         output_classes=13,
         print_statements=True,
@@ -126,13 +173,14 @@ class VisionTransformer(nn.Module):
             drop_rate (float): dropout rate
             attn_drop_rate (float): attention dropout rate
             pos_enc (string): 'RoPE' or 'Sinusoidal'
+            sinusoidal_theta (int): Theta value for our sinusoidal positional encodings
             head (bool): if true, add final linear layer to output logits for classification
             output_classes (int): output dimension of your classification head
         """
         super().__init__()
         self.model_params = {
             key: value for key, value in locals().items()
-            if key in ["max_img_size", "unique_patches", "embed_dim", "depth", "num_heads", "mlp_ratio", "qkv_bias", "drop_rate", "attn_drop_rate", "pos_enc", "device"]
+            if key in ["max_img_size", "unique_patches", "embed_dim", "depth", "num_heads", "mlp_ratio", "qkv_bias", "drop_rate", "attn_drop_rate", "pos_enc", "sinusoidal_theta", "device"]
         }   # Store model params for easy reloading
 
         self.device = device
@@ -145,31 +193,29 @@ class VisionTransformer(nn.Module):
 
         self.patch_embeddings = nn.Embedding(num_embeddings=unique_patches+1, embedding_dim=embed_dim, device=device)
         self.mask_token = unique_patches    # Token id for the masking token
-        self.cls_token  = nn.Parameter(torch.zeros(1, 1, embed_dim, device=device))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim, device=device) * 0.02)
         if pos_enc == "Sinusoidal":
-            self.register_buffer('sinusoidal_enc', self.get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=1000).to(device))
+            self.register_buffer('sinusoidal_enc', self.get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=sinusoidal_theta).to(device))
         
         self.blocks = nn.Sequential(*[Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate, attn_drop=attn_drop_rate, pos_enc=pos_enc) for i in range(depth)])
             
-        
         if self.head:
             self.classification_head = nn.Linear(embed_dim, output_classes, bias=False)
 
         if print_statements:
             print(f"Vision Transformer instantiated with {sum(p.numel() for p in self.parameters() if p.requires_grad):,} parameters using {pos_enc} encodings.")
 
-    def forward(self, x, mask=None, save_attn=False, temperature=1, start_location=(0,0)):
+    def forward(self, x, mask=None, save_attn=False, temperature=1):
         B, H, W = x.shape
         if mask is not None:
             x = torch.where(mask == 1, self.mask_token, x)
         
-        pad_mask = torch.where(x >= 11, 0, torch.ones(x.shape, device=self.device)).to(self.device)  # Use to zero out pad tokens
+        pad_mask = torch.where(x >= 11, 0, torch.ones(x.shape, device=self.device)).to(self.device)
         pad_mask = torch.cat((torch.ones((B, 1, 1), device=self.device), pad_mask.view(B, H*W, -1)), dim=1)
                               
         x = self.patch_embeddings(x)
-        start_x, start_y = start_location
         if self.pos_enc == 'Sinusoidal':
-            x += self.sinusoidal_enc[start_y:start_y+H, start_x:start_x+W, :]
+            x += self.sinusoidal_enc[:H, :W, :]
         
         x = x.view(B, H * W, -1)
         cls_token = self.cls_token.expand(B, -1, -1)
@@ -188,7 +234,7 @@ class VisionTransformer(nn.Module):
         return cls_logits, patch_logits, attns
 
     @staticmethod
-    def get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=50):
+    def get_sinusoidal_positional_encodings(max_img_size, embed_dim, theta=10000):
         """ 
         Given max_img_size, computes positional encodings using a sinusoidal method on two channels and returns a tensor of size 'max_img_size x max_img_size x embed_dim'
         """
@@ -207,7 +253,8 @@ class VisionTransformer(nn.Module):
                 positional_grid[x, y, :] = _positional_encoding_2d(x, y, embed_dim)        
         return positional_grid
 
-    def save_model(self):
+    def save_model(self, transformation_embeddings):
+        """Save the model, its parameters, and the transformation embeddings to a file."""
         save_dir = "trained_models"
         os.makedirs(save_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -215,26 +262,29 @@ class VisionTransformer(nn.Module):
         save_path = os.path.join(save_dir, save_name)
         torch.save({
             'model_state_dict': self.state_dict(),
-            'model_params': self.model_params
+            'model_params': self.model_params,
+            'transformations': transformation_embeddings.transformations,
+            'embedding_state_dict': transformation_embeddings.embs.state_dict(),
+            'embedding_dim': transformation_embeddings.dim
         }, save_path)
-        print(f"Model and parameters saved to {save_path}")
-
+        print(f"Model and transformation embeddings saved to {save_path}")
+    
     @classmethod
     def load_model(cls, path, print_statements=False, device='cpu'):
+        """Load the model and transformation embeddings from a file."""
         checkpoint = torch.load(path, map_location=torch.device(device))
-        state_dict = checkpoint['model_state_dict']
-        if 'pos_enc' in state_dict:
-            state_dict['sinusoidal_enc'] = state_dict.pop('pos_enc')
-            if print_statements:
-                print("Replaced 'pos_enc' with 'sinusoidal_enc' in state_dict.")
-        if 'device' in checkpoint['model_params']:
-            checkpoint['model_params']['device'] = device
+        checkpoint['model_params']['device'] = device        
         model = cls(**checkpoint['model_params'], print_statements=print_statements)
-        model.load_state_dict(state_dict, strict=False)  # Allow missing/extra keys
-        model.device = device
-        if print_statements:
-            print(f"Model loaded from {path} on {device}")
-        return model.to(device)
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+
+        transformation_embeddings = TransformationEmbeddings.load_embeddings(
+            dim = checkpoint['embedding_dim'],
+            transformations = checkpoint['transformations'],
+            device = device,
+            embeddings = checkpoint['embedding_state_dict']
+        )
+        
+        return model.to(device), transformation_embeddings
 
 
 
