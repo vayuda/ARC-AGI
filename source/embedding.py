@@ -11,7 +11,7 @@ def load_resnet50():
     return resnet50
 
 def load_ViT(device='cpu'):
-    filename = 'image_encoder/trained_models/vit_11-18_sinusoid125k.pth'
-    model = transformers.get_encoder(filename, print_statements=True, device=device)
+    file = 'image_encoder/trained_models/vit_11-21-24_400k_vF.pth'
+    model = transformers.VisionTransformer.load_model(file, print_statements=True, device=device)
     model = model.to(device)
     return model

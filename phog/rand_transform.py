@@ -1,90 +1,7 @@
-import inspect
 import random
-from typing import List, Tuple, Callable
-from collections import defaultdict
-from .dsl import *
-from .objects import ARC_Object
-from .segmentation import extract_objects, SEG_METHODS
-from .util import Color
+from typing import List, Callable
+from ..source import *
 
-# def generate_rand_param(param_type, base_obj: ARC_Object, obj_lst: list[ARC_Object]):
-#     if param_type == Color:
-#         return random.choice(list(Color))
-#     elif param_type == int:
-#         return random.randint(0, 16)
-#     elif param_type == Tuple[int, int]:
-#         return (random.randint(-16, 16), random.randint(-16, 16))
-#     elif param_type == List[int]:
-#         return [random.randint(0, base_obj.width), random.randint(0, base_obj.height)]
-#     elif param_type == ARC_Object:
-#         return random.choice(obj_lst)
-#     elif param_type == list[ARC_Object]:
-#         return random.choices(obj_lst)
-#     else:
-#         print('Unhandled type!')
-#         return None
-
-# def get_args(func: Callable, base_obj: ARC_Object, obj_lst: list[ARC_Object]) -> list:
-#     sig = inspect.signature(func)
-#     args = []
-#     params = list(sig.parameters.values())
-#     if params[0].annotation == ARC_Object:
-#         args.append(base_obj)
-#         for p in params[1:]:
-#             param_type = p.annotation
-#             args.append(generate_rand_param(param_type, base_obj, obj_lst))
-#     else:
-#         for p in params:
-#             param_type = p.annotation
-#             args.append(generate_rand_param(param_type, base_obj, obj_lst))
-#     return args
-
-# def rand_transform(obj: ARC_Object, seg_method:int =0, depth:int =6, include_base:bool =True, print_seg_method:bool =False):
-#     '''
-#     Input:
-#     - obj: An ARC Object
-#     - seg_method: 0 = random, 1 = color, 2 = contour
-#     - depth: Number of transforms to chain
-#     - include_base: Whether to include the base input object in the transform
-#     - print_seg_method: Whether to print the segmentation method used
-#     '''
-#     if seg_method == 0:
-#         seg_method = random.randint(1, 3)
-    
-#     if print_seg_method:
-#         print(f'Using segmentation method: {SEG_METHODS[seg_method]}')
-    
-#     obj_lst = extract_objects(obj, method=SEG_METHODS[seg_method])
-    
-#     if include_base:
-#         obj_lst.insert(0, obj)
-
-#     transforms = {}
-#     transforms = defaultdict(lambda:0, transforms)
-#     for d in range(depth):
-#         new_lst = []
-#         func = random.choice(dsl_operations)
-#         transforms[func] += 1
-#         for o in obj_lst:
-#             args = get_args(func, o, obj_lst)
-#             new_obj = func(*args)
-#             new_lst.append(new_obj)
-#         obj_lst = new_lst
-    
-#     return obj_lst, transforms
-
-
-
-# dsl_operations = [
-#     color,
-#     recolor,
-#     rotate, 
-#     flip,
-#     delete,
-#     translate,
-#     tile,
-#     draw_line,
-# ] 
 
 dsl_base_operations = [
     color,
@@ -105,7 +22,49 @@ dsl_obj_operations = [
     draw_line,
 ]
 
-def apply_base_transform(base_obj: ARC_Object, transform: Callable) -> ARC_Object:
+def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_base:bool =True, print_seg_method:bool =False):
+    '''
+    Input:
+    - base_obj: An ARC Object (base object)
+    - seg_method: 0 = random, 1 = color, 2 = contour
+    - depth: Number of transforms to chain
+    - use_base: Whether to only use base for your transforms or individual objects
+    - print_seg_method: Whether to print the segmentation method used
+    '''
+    if seg_method == 0:
+        seg_method = random.randint(1, 3)
+    if print_seg_method:
+        print(f'Using segmentation method: {SEG_METHODS[seg_method]}')
+    obj_list = extract_objects(base_obj, method=SEG_METHODS[seg_method])
+    original_objs = [base_obj.copy()].extend(obj_list.copy())
+    transforms = []
+
+    if use_base:
+        num_transforms = random.randint(1, int(depth/2))
+        for _ in range(num_transforms):
+            func = random.choice(dsl_base_operations)
+            transforms.append(func)
+            base_obj = _apply_base_transform(base_obj, func)
+        obj_list = extract_objects(base_obj, method=SEG_METHODS[seg_method])
+    else:
+        num_transforms = random.randint(1, depth)
+        for _ in range(num_transforms):
+            func = None
+            while func is None and (func.__name__ is not 'delete' and len(obj_list) <= 1):
+                func = random.choice(dsl_obj_operations)
+            
+            transforms.append(func)
+            obj_list = _apply_obj_transform(obj_list, func)
+        base_obj = _flatten_objects(obj_list)
+    
+    return original_objs, [base_obj].extend(obj_list), transforms
+
+
+# =====================================
+# Helper Functions
+# =====================================
+
+def _apply_base_transform(base_obj: ARC_Object, transform: Callable) -> ARC_Object:
     if transform.__name__ == 'color':
         new_color = random.randint(1, 9)
         base_obj = color(base_obj, new_color)
@@ -125,7 +84,6 @@ def apply_base_transform(base_obj: ARC_Object, transform: Callable) -> ARC_Objec
         return base_obj
 
     return base_obj
-
 
 def _apply_obj_transform(obj_list: List[ARC_Object], transform: Callable) -> List[ARC_Object]:
     obj_idx = random.randint(0, len(obj_list) - 1)
@@ -172,40 +130,6 @@ def _apply_obj_transform(obj_list: List[ARC_Object], transform: Callable) -> Lis
         obj_list.append(t_obj)
     return obj_list
 
-
-def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_base:bool =True, print_seg_method:bool =False):
-    '''
-    Input:
-    - base_obj: An ARC Object (base object)
-    - seg_method: 0 = random, 1 = color, 2 = contour
-    - depth: Number of transforms to chain
-    - use_base: Whether to only use base for your transforms or individual objects
-    - print_seg_method: Whether to print the segmentation method used
-    '''
-    if seg_method == 0:
-        seg_method = random.randint(1, 3)
-    if print_seg_method:
-        print(f'Using segmentation method: {SEG_METHODS[seg_method]}')
-    obj_list = extract_objects(base_obj, method=SEG_METHODS[seg_method])
-    transforms = []
-
-    if use_base:
-        num_transforms = random.randint(1, int(depth/2))
-        for _ in range(num_transforms):
-            func = random.choice(dsl_base_operations)
-            transforms.append(func)
-            base_obj = apply_base_transform(base_obj, func)
-    else:
-        num_transforms = random.randint(1, depth)
-        for _ in range(num_transforms):
-            func = None
-            while func is None and (func.__name__ is not 'delete' and len(obj_list) <= 1):
-                func = random.choice(dsl_obj_operations)
-            
-            transforms.append(func)
-            obj_list = _apply_obj_transform(obj_list, func)
-
-    return obj_list, transforms
 
 def _get_background_color(obj_list):
     """ Gets the int associated with the most common color across the ARC_Objects (can be 0) """

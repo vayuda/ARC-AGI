@@ -6,9 +6,8 @@ from .objects import ARC_Object
 
 SEG_METHODS = {
     1: 'color',
-    2: 'contour',
-    3: 'contour_scale',
-    4: 'monochrome_contour',
+    2: 'contour_scale',
+    3: 'monochrome_contour',
 }
 
 def extract_objects(source_object, method='color', print_on_init=False, embedding_model=None):

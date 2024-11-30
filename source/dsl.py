@@ -20,9 +20,11 @@ def recolor(obj: ARC_Object, orig_color: Color, new_color: Color) -> ARC_Object:
     new_obj.grid[new_obj.grid == int(orig_color)] = int(new_color)
     return new_obj
 
-def rotate(obj: ARC_Object) -> ARC_Object:
+def rotate(obj: ARC_Object, num_rotations: int =None) -> ARC_Object:
     new_obj = deepcopy(obj)
-    new_obj.grid = np.rot90(new_obj.grid, k=-1)
+    if num_rotations is None:
+        num_rotations = np.random.randint(1, 3)
+    new_obj.grid = np.rot90(new_obj.grid, num_rotations)
     new_obj.height, new_obj.width = new_obj.grid.shape
     return new_obj
 
@@ -72,6 +74,12 @@ def translate(obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
     new_obj.grid = new_grid
     new_obj.top_left = (max(0, new_top_left_x), max(0, new_top_left_y))
     return new_obj
+
+def single_copy(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
+    return tile(base, tile, direction, 1)
+
+def copy_translate(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
+    return tile(base, tile, direction, end)
 
 def tile(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
     """

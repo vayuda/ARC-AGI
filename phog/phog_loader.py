@@ -1,10 +1,13 @@
 import os
 import json
 import random
+import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from ..rand_transform import rand_transform
+from .... import source as source
 from .. import training_dsl as training_dsl
 
 
@@ -26,7 +29,7 @@ def _get_data_fp(filename):
     return file
 
 
-def get_dataloader(filename, loader_params):
+def get_phog_dataloader(filename, loader_params):
     """
         Function for easy external calling that returns our dataloader given loader params and a filename.
 
