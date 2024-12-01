@@ -62,12 +62,12 @@ def extract_objects(source_object, method='color', print_on_init=False, embeddin
     elif method == 'monochrome_contour':
         if print_on_init:
             print('Source Object')
-            source_object.plot_grid()
+            print(source_object.get_grid())
         arc_objects = get_monochrome_contour(image)
         for object in arc_objects:
             if print_on_init:
                 print('New Object')
-                object.plot_grid()
+                print(object.get_grid())
             source_object.add_child(object)
         return arc_objects
     else:
@@ -170,13 +170,12 @@ def get_monochrome_contour(image):
         for j in range(w):
             if visited[i, j] == 0 and image[i,j] != 0:  # Unvisited non black pixel
                 color = image[i, j]
-                loop_mask = np.zeros_like(image)
-                loop_coords = cbfs(image, i, j)
-                for y, x in loop_coords:
-                    loop_mask[y, x] = 1
+                object_mask = np.zeros_like(image)
+                object_coords = cbfs(image, i, j)
+                for y, x in object_coords:
+                    object_mask[y, x] = 1
                     visited[y, x] = 1
-                    
-                objects.append(ARC_Object(image, loop_mask,color=color,start=(i,j)))
+                objects.append(ARC_Object(image, object_mask,color=color,start=(i,j)))
     return objects
 
 
@@ -191,6 +190,7 @@ def cbfs(image: np.array, y: int, x: int):
     '''
     frontier = deque([(y, x)])
     visited = set()
+    visited.add((y, x))
     target_color = image[y, x]
     while frontier:
         y, x = frontier.popleft()
