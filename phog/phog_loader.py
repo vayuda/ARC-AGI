@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import random
 import numpy as np
@@ -6,9 +7,14 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from ..rand_transform import rand_transform
-from .... import source as source
-from .. import training_dsl as training_dsl
+# Need to add root to sys.path to import source and image_encoder
+current_file_dir = os.path.abspath(os.path.dirname(__file__))
+root = os.path.abspath(os.path.join(current_file_dir, ".."))
+if root not in sys.path:
+    sys.path.append(root)
+
+from rand_transform import rand_transform
+import source as source
 
 
 # ========================================================================
@@ -38,7 +44,7 @@ def get_phog_dataloader(filename, loader_params):
             loader_params (dict): Dictionary of our loader parameters
     """
     fp = _get_data_fp(filename)
-    dataset = ARCDatasetWrapper(TxtDictDataset(fp), pad_images=loader_params['pad_images'], percent_mask=loader_params['percent_mask'], place_central=loader_params['place_central'])
+    dataset = ARCDatasetWrapper(JSONDataset(fp), pad_images=loader_params['pad_images'], percent_mask=loader_params['percent_mask'], place_central=loader_params['place_central'])
     dataloader = ARCDataLoader(dataset, batch_size=loader_params['batch_size'], shuffle=loader_params['shuffle'])
     return dataloader
 
@@ -46,7 +52,7 @@ def get_phog_dataloader(filename, loader_params):
 # ========================================================================
 # Custom Dataset, Dataset Wrapper, and DataLoader
 # ========================================================================
-class TxtDictDataset(Dataset):
+class JSONDataset(Dataset):
     def __init__(self, fp):
         """
         Custom dataset to load in a .txt file of dict objects.

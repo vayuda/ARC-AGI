@@ -75,30 +75,30 @@ def translate(obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
     new_obj.top_left = (max(0, new_top_left_x), max(0, new_top_left_y))
     return new_obj
 
-def single_copy(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
-    return tile(base, tile, direction, 1)
+def single_copy(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
+    return tile(base, tile_obj, direction, 1)
 
-def copy_translate(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
-    return tile(base, tile, direction, end)
+def copy_translate(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
+    return tile(base, tile_obj, direction, end)
 
-def tile(base: ARC_Object, tile: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
+def tile(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
     """
     Tile the object in the given direction end times. If end = 0, tile until the edge of the grid.
     """
     new_obj = deepcopy(base)
-    cur_pos = tile.top_left
+    cur_pos = tile_obj.top_left
 
     iterations = 0
     while end == 0 or iterations < end:
         if (cur_pos[0] < 0 or cur_pos[1] < 0 or
-            cur_pos[0] + tile.height > new_obj.height or
-            cur_pos[1] + tile.width > new_obj.width):
+            cur_pos[0] + tile_obj.height > new_obj.height or
+            cur_pos[1] + tile_obj.width > new_obj.width):
             break
 
-        for y in range(tile.height):
-            for x in range(tile.width):
-                if tile.grid[y, x] in range(-1, 10):
-                    new_obj.grid[cur_pos[0] + y, cur_pos[1] + x] = tile.grid[y, x]
+        for y in range(tile_obj.height):
+            for x in range(tile_obj.width):
+                if tile_obj.grid[y, x] in range(-1, 10):
+                    new_obj.grid[cur_pos[0] + y, cur_pos[1] + x] = tile_obj.grid[y, x]
 
         cur_pos = (cur_pos[0] + direction[0], cur_pos[1] + direction[1])
         iterations += 1

@@ -131,17 +131,24 @@ def get_contour_masks(image, freq_scale):
     else:
         scaled_image = (image * 255 / 9).astype(np.uint8)
     
+    # Check if the scaled image is a single color
+    unique_values = np.unique(scaled_image)
+    if len(unique_values) == 1:
+        mask = np.full_like(scaled_image, 1, dtype=np.uint8)
+        return [mask], None
+
     # Find contours and hierarchy
     contours, hierarchy = cv2.findContours(scaled_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
     # Create a list of masks for each contour
     contour_masks = []
     for i in range(len(contours)):
-        mask = np.zeros_like(scaled_image, dtype=np.uint8)
+        mask = np.ascontiguousarray(np.zeros_like(scaled_image, dtype=np.uint8))
         cv2.drawContours(mask, contours, i, 1, thickness=cv2.FILLED)
         contour_masks.append(mask)
     
     return contour_masks, hierarchy
+
 
 def get_monochrome_contour(image):
     """

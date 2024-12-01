@@ -22,14 +22,14 @@ class ARC_Object:
             x_nonzeros = np.nonzero(np.sum(mask, axis=0))[0]  # Columns with non-zero values
             y_nonzeros = np.nonzero(np.sum(mask, axis=1))[0]  # Rows with non-zero values
             self.top_left = (int(y_nonzeros[0]), int(x_nonzeros[0])) if len(x_nonzeros) > 0 and len(y_nonzeros) > 0 else (0, 0)
-            self.width = x_nonzeros[-1] - x_nonzeros[0] + 1
-            self.height = y_nonzeros[-1] - y_nonzeros[0] + 1
+            self.width = int(x_nonzeros[-1] - x_nonzeros[0] + 1)
+            self.height = int(y_nonzeros[-1] - y_nonzeros[0] + 1)
             image = np.where(mask == 0, 12, image)
         # no mask just treat the whole image as the object
         else:
             self.top_left = (0, 0)
-            self.width = image.shape[1]
-            self.height = image.shape[0]
+            self.width = int(image.shape[1])
+            self.height = int(image.shape[0])
                 
         self.start = start # coordinate of the pixel in the mask with the smallest flattened index (y * width + x)
         self.parent = parent
