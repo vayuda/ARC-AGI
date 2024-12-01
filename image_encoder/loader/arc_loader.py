@@ -1,11 +1,18 @@
 import os
+import sys
 import json
 import random
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from .. import training_dsl as training_dsl
+# Need to add root to sys.path to import source and image_encoder
+current_file_dir = os.path.abspath(os.path.dirname(__file__))
+root = os.path.abspath(os.path.join(current_file_dir, ".."))
+if root not in sys.path:
+    sys.path.append(root)
+
+import training_dsl as training_dsl
 
 
 # ========================================================================

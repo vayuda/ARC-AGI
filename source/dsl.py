@@ -1,9 +1,8 @@
+import random
 import numpy as np
 from copy import deepcopy
-from scipy.stats import mode
 from typing import List, Tuple
 from .objects import ARC_Object
-from itertools import permutations
 from .util import Color
 
 '''
@@ -12,7 +11,7 @@ All DSL operations return a new copy of object
 
 def color(obj: ARC_Object, color: Color) -> ARC_Object:
     new_obj = deepcopy(obj)
-    new_obj.grid[new_obj.grid != 0] = int(color)
+    new_obj.grid[(new_obj.grid != 0) & (new_obj.grid < 10)] = int(color)
     return new_obj
 
 def recolor(obj: ARC_Object, orig_color: Color, new_color: Color) -> ARC_Object:
@@ -23,13 +22,13 @@ def recolor(obj: ARC_Object, orig_color: Color, new_color: Color) -> ARC_Object:
 def rotate(obj: ARC_Object, num_rotations: int =None) -> ARC_Object:
     new_obj = deepcopy(obj)
     if num_rotations is None:
-        num_rotations = np.random.randint(1, 3)
+        num_rotations = 1
     new_obj.grid = np.rot90(new_obj.grid, num_rotations)
     new_obj.height, new_obj.width = new_obj.grid.shape
     return new_obj
 
-# flips left to right, if we need up/down, then rotate first
 def flip(obj: ARC_Object) -> ARC_Object:
+    """ Mirrors over the y-axis. """
     new_obj = deepcopy(obj)
     new_obj.grid = np.fliplr(new_obj.grid)
     return new_obj
@@ -40,65 +39,44 @@ def delete(obj: ARC_Object) -> ARC_Object:
     return new_obj
 
 def translate(obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
+    """
+    Assumes direction is a tuple of (r, c) to move the object and that direction does not take object off the base grid.
+    """
     new_obj = deepcopy(obj)
-    new_grid = np.zeros_like(new_obj.grid)
-
-    new_top_left_x = new_obj.top_left[0] + direction[0]
-    new_top_left_y = new_obj.top_left[1] + direction[1]
-
-    if new_top_left_x + obj.height <= 0:
-        new_top_left_x = 1 - obj.height
-    elif new_top_left_x >= obj.height:
-        new_top_left_x = obj.height - 1
-
-    if new_top_left_y + obj.width <= 0:
-        new_top_left_y = 1 - obj.width
-    elif new_top_left_y >= obj.width:
-        new_top_left_y = obj.width - 1
-
-    src_x_start = max(0, -new_top_left_x)
-    src_y_start = max(0, -new_top_left_y)
-    src_x_end = min(obj.height, new_obj.height - new_top_left_x)
-    src_y_end = min(obj.width, new_obj.width - new_top_left_y)
-
-    dest_x_start = max(0, new_top_left_x)
-    dest_y_start = max(0, new_top_left_y)
-    dest_x_end = dest_x_start + (src_x_end - src_x_start)
-    dest_y_end = dest_y_start + (src_y_end - src_y_start)
-
-    if src_x_start < src_x_end and src_y_start < src_y_end:
-        new_grid[dest_x_start:dest_x_end, dest_y_start:dest_y_end] = obj.grid[
-            src_x_start:src_x_end, src_y_start:src_y_end
-        ]
-
-    new_obj.grid = new_grid
-    new_obj.top_left = (max(0, new_top_left_x), max(0, new_top_left_y))
+    new_top_left_r = new_obj.top_left[0] + direction[0]
+    new_top_left_c = new_obj.top_left[1] + direction[1]
+    new_obj.top_left = (new_top_left_r, new_top_left_c)
     return new_obj
 
 def single_copy(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int]) -> ARC_Object:
-    return tile(base, tile_obj, direction, 1)
+    new_tile_obj = deepcopy(tile_obj)
+    new_tile_obj.top_left = (tile_obj.top_left[0]+direction[0], tile_obj.top_left[1]+direction[1])
+    return tile(base, new_tile_obj, direction, 1)
 
 def copy_translate(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
     return tile(base, tile_obj, direction, end)
 
 def tile(base: ARC_Object, tile_obj: ARC_Object, direction: Tuple[int, int], end: int) -> ARC_Object:
     """
-    Tile the object in the given direction end times. If end = 0, tile until the edge of the grid.
+    Tile the object in the given direction (r, c) 'end' number of times. If end = 0, tile until the edge of the grid.
     """
     new_obj = deepcopy(base)
-    cur_pos = tile_obj.top_left
+    cur_pos = tile_obj.top_left     # Cur pos in form (r, c)
+    if direction[0] == 0 and direction[1] == 0:
+        raise ValueError("Direction cannot be (0, 0) - may cause infinite loop.")
 
     iterations = 0
     while end == 0 or iterations < end:
-        if (cur_pos[0] < 0 or cur_pos[1] < 0 or
-            cur_pos[0] + tile_obj.height > new_obj.height or
-            cur_pos[1] + tile_obj.width > new_obj.width):
+        if (cur_pos[0] + tile_obj.height < 0 or cur_pos[0] >= new_obj.height or 
+            cur_pos[1] + tile_obj.width < 0 or cur_pos[1] >= new_obj.width):
             break
 
-        for y in range(tile_obj.height):
-            for x in range(tile_obj.width):
-                if tile_obj.grid[y, x] in range(-1, 10):
-                    new_obj.grid[cur_pos[0] + y, cur_pos[1] + x] = tile_obj.grid[y, x]
+        for i in range(tile_obj.height):
+            r = cur_pos[0] + i
+            for j in range(tile_obj.width):
+                c = cur_pos[1] + j
+                if tile_obj.grid[i, j] in range(0, 10) and (r >= 0 and r < new_obj.height and c >= 0 and c < new_obj.width):
+                    new_obj.grid[r, c] = tile_obj.grid[i, j]
 
         cur_pos = (cur_pos[0] + direction[0], cur_pos[1] + direction[1])
         iterations += 1
@@ -109,25 +87,29 @@ def draw_line(base: ARC_Object, start: List[int], end: List[int], color: Color) 
     """
     Draw a line on the base object from start to end with the given color.
     
+    Start should be in the form of (r, c) and end should be in the form of (r, c).
     """
     new_obj = deepcopy(base)
-    start_x = max(0, min(new_obj.height - 1, start[0]))
-    start_y = max(0, min(new_obj.width - 1, start[1]))
-    end_x = max(0, min(new_obj.height - 1, end[0]))
-    end_y = max(0, min(new_obj.width - 1, end[1]))
+    start_r = max(0, min(new_obj.height - 1, start[0]))
+    start_c = max(0, min(new_obj.width - 1, start[1]))
+    end_r = max(0, min(new_obj.height - 1, end[0]))
+    end_c = max(0, min(new_obj.width - 1, end[1]))
 
-    if start_x == end_x:
-        y_start = min(start_y, end_y)
-        y_end = max(start_y, end_y)
-        new_obj.grid[start_x, y_start:y_end + 1] = int(color)
-    elif start_y == end_y:
-        x_start = min(start_x, end_x)
-        x_end = max(start_x, end_x)
-        new_obj.grid[x_start:x_end + 1, start_y] = int(color)
-    elif start_y - end_y == start_x - end_x:
-        x_range = range(start_x, end_x + 1) if start_x < end_x else range(start_x, end_x - 1, -1)
-        y_range = range(start_y, end_y + 1) if start_y < end_y else range(start_y, end_y - 1, -1)
-        for x, y in zip(x_range, y_range):
+    if start_r == end_r:   # Draw horizontal line
+        c_start = min(start_c, end_c)
+        c_end = max(start_c, end_c)
+        new_obj.grid[start_r, c_start:c_end + 1] = int(color)
+    elif start_c == end_c:  # Draw vertical line
+        r_start = min(start_r, end_r)
+        r_end = max(start_r, end_r)
+        new_obj.grid[r_start:r_end + 1, start_c] = int(color)
+    elif start_r == end_r and start_c == end_c:   # Single point
+        new_obj.grid[start_r, start_c] = int(color)
+    else:    # Diagonal line
+        r_range = range(start_r, end_r + 1) if start_r < end_r else range(start_r, end_r - 1, -1)
+        c_range = range(start_c, end_c + 1) if start_c < end_c else range(start_c, end_c - 1, -1)
+        # If x_range and y_range are different lengths, zip truncates to the shorter length
+        for x, y in zip(r_range, c_range):
             new_obj.grid[x, y] = int(color)
 
     return new_obj

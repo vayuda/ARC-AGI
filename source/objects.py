@@ -19,6 +19,8 @@ class ARC_Object:
         self.active_pixels = np.sum(mask)
         # Compute our positions
         if mask is not None:
+            if mask.shape != image.shape:
+                raise ValueError("Mask and image must have the same shape.")
             x_nonzeros = np.nonzero(np.sum(mask, axis=0))[0]  # Columns with non-zero values
             y_nonzeros = np.nonzero(np.sum(mask, axis=1))[0]  # Rows with non-zero values
             self.top_left = (int(y_nonzeros[0]), int(x_nonzeros[0])) if len(x_nonzeros) > 0 and len(y_nonzeros) > 0 else (0, 0)
