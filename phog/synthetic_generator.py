@@ -33,6 +33,9 @@ dsl_obj_operations = [
     draw_line,
 ]
 
+class InvalidTransformationError(Exception):
+    pass
+
 def get_dsl_operations():
     """ Deterministically returns the list of unique DSL operations for base objects and individual objects. """
     dsl_operations = []
@@ -56,6 +59,7 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
     transforms = []
     intermediate_objs = [deepcopy(base_obj)]
     attempts, max_attempts = 0, 15
+    obj_idx = 0
 
     if use_base:
         num_transforms = random.randint(1, 3) if depth == None else depth
@@ -64,10 +68,13 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
             attempts += 1
             if attempts > max_attempts:
                 break
-
+            
             func = random.choice(dsl_base_operations)
-            new_base = _apply_base_transform(intermediate_objs[-1], func)
-
+            try:
+                new_base = _apply_base_transform(intermediate_objs[-1], func)
+            except InvalidTransformationError as e:
+                continue
+            
             obj_list, _ = _extract_from_base(new_base, seg_method)
             if len(obj_list) == 0:
                 continue
@@ -78,25 +85,21 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
         num_transforms = random.randint(1, 5) if depth == None else depth
         while len(transforms) < num_transforms:
             attempts += 1
-            if attempts > max_attempts:
-                break
-            
             func = random.choice(dsl_obj_operations)
-            
             base_obj = deepcopy(intermediate_objs[-1])
             obj_list, _ = _extract_from_base(base_obj, seg_method)
+            
+            if attempts > max_attempts or len(obj_list) == 0:
+                break   # There are a few problems (~10) that will trip the len(obj_list) == 0 condition
+            
+            try:
+                new_obj_list, obj_idx = _apply_obj_transform(base_obj, obj_list, func)
+            except InvalidTransformationError as e:
+                continue            
 
-            if len(obj_list) == 0:
-                break   # There are ~13 problems in the dataset that will trip this
-            
-            new_obj_list = _apply_obj_transform(base_obj, obj_list, func)
-            
-            # Catch invalid transformations
-            if new_obj_list is None:
-                continue
-            
             new_base = _flatten_objects(intermediate_objs[-1], new_obj_list)            
             temp_obj_list, _ = _extract_from_base(new_base, seg_method)
+            
             # Prevent transformations that lead to single element objects
             if len(temp_obj_list) < 2:
                 continue
@@ -107,7 +110,7 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
     obj_list, _ = _extract_from_base(base_obj, seg_method)
     
     transformed_objs = [base_obj] + obj_list
-    return original_objs, transformed_objs, transforms
+    return original_objs, transformed_objs, transforms, obj_idx
 
 def _check_triviality(new_base: ARC_Object, transforms: List, intermediate_objs: List[ARC_Object]):
     for i in range(len(intermediate_objs)-1):
@@ -128,50 +131,58 @@ def _apply_base_transform(base_obj: ARC_Object, transform: Callable) -> ARC_Obje
     if transform.__name__ == 'recolor':
         old_color, new_color = _get_recolor_colors(base_obj)
         base_obj = recolor(base_obj, old_color, new_color)
+    
     elif transform.__name__ == 'rotate':
         base_obj = rotate(base_obj)
+    
     elif transform.__name__ == 'flip':
         base_obj = flip(base_obj)
+    
     else:
-        print(f'{transform.__name__} not viable base transformation.')
-        return base_obj
+        raise InvalidTransformationError(f"Invalid transformation: {transform.__name__}.")
 
     return base_obj
 
 def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], transform: Callable) -> List[ARC_Object]:
     obj_idx = random.randint(0, len(obj_list) - 1)
-    if transform.__name__ == 'delete' and len(obj_list) <= 2:  # Limit trivial problems
-        return None
-
     transform_obj = obj_list.pop(obj_idx)  # Remove from list to apply transformation
 
     if transform.__name__ == 'color':
         new_color = random.choice(VALID_COLORS)
         transform_obj = color(transform_obj, new_color)
+    
     elif transform.__name__ == 'recolor':
         old_color, new_color = _get_recolor_colors(transform_obj)
         transform_obj = recolor(transform_obj, old_color, new_color)
+    
     elif transform.__name__ == 'rotate':
         transform_obj = rotate(transform_obj)
+    
     elif transform.__name__ == 'flip':
         transform_obj = flip(transform_obj)
+    
     elif transform.__name__ == 'delete':
+        if len(obj_list) <= 2:
+            raise InvalidTransformationError("Cannot call delete when few objects - leads to trivial problems.")
         transform_obj = None
+    
     elif transform.__name__ == 'translate':
         t_bounds_r, t_bounds_c = _get_transform_bounds(transform_obj, base_obj)
         translate_r, translate_c = random.randint(*t_bounds_r), random.randint(*t_bounds_c)
         if translate_r == 0 and translate_c == 0:
             obj_list.append(deepcopy(transform_obj))   # Need to add back to list if no translation
-            return None
+            raise InvalidTransformationError("Translation is trivial.")
         transform_obj = translate(transform_obj, (translate_r, translate_c))
+    
     elif transform.__name__ == 'single_copy':
         new_base = _get_background([base_obj], use_padding=True)
         obj_list.append(deepcopy(transform_obj))   # Since we are copying, we need to keep the original
         t_bounds_r, t_bounds_c = _get_transform_bounds(transform_obj, new_base)
         translate_r, translate_c = random.randint(*t_bounds_r), random.randint(*t_bounds_c)
         if translate_r == 0 and translate_c == 0:
-            return None
+            raise InvalidTransformationError("Translation is trivial.")
         transform_obj = single_copy(new_base, transform_obj, direction=(translate_r, translate_c))
+    
     elif transform.__name__ == 'copy_translate':
         new_base = _get_background([base_obj], use_padding=True)
         # No need to append back to obj_list since when you do copy_translate you recreate the object
@@ -179,20 +190,21 @@ def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], trans
         translate_r, translate_c = _get_translation(transform_obj, t_bounds_r, t_bounds_c)
         if translate_r == 0 and translate_c == 0:
             obj_list.append(deepcopy(transform_obj))   # Need to add back to list if no translation
-            return None
+            raise InvalidTransformationError("Translation is trivial.")
         transform_obj = copy_translate(new_base, transform_obj, direction=(translate_r, translate_c), end=0)
+    
     elif transform.__name__ == 'draw_line':
         obj_list.append(deepcopy(transform_obj))
         new_base = _get_background([base_obj], use_padding=True)
         start, end = _get_draw_line_bounds(base_obj)
         transform_obj = draw_line(new_base, start, end, random.choice(VALID_COLORS))
+    
     else:
-        print(f'{transform.__name__} not viable object transformation.')
-        return obj_list
+        raise InvalidTransformationError(f"Invalid transformation: {transform.__name__}.")
     
     if transform_obj is not None:
         obj_list.append(transform_obj)
-    return obj_list
+    return obj_list, obj_idx
 
 
 def _extract_from_base(base_obj: ARC_Object, seg_method:int =0):
