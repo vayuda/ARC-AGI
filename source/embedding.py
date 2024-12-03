@@ -1,6 +1,14 @@
+import os
+import sys
+
 import torch
 import image_encoder.transformers as transformers
 
+# Need to add root to sys.path to import source and image_encoder
+current_file_dir = os.path.abspath(os.path.dirname(__file__))
+root = os.path.abspath(os.path.join(current_file_dir, ".."))
+if root not in sys.path:
+    sys.path.append(root)
 
 
 def load_resnet50():
@@ -12,6 +20,7 @@ def load_resnet50():
 
 def load_ViT(device='cpu'):
     file = 'image_encoder/trained_models/vit_11-21-24_400k_vF.pth'
-    model = transformers.VisionTransformer.load_model(file, print_statements=True, device=device)
+    filepath = os.path.join(root, file)
+    model, _ = transformers.VisionTransformer.load_model(filepath, print_statements=True, device=device)
     model = model.to(device)
     return model
