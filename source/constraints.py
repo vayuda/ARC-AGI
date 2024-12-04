@@ -3,7 +3,7 @@ from typing import List, Tuple
 from .objects import ARC_Object
 import networkx as nx
 import matplotlib.pyplot as plt
-import dsl
+from . import dsl
 class RelationGraph():
     def __init__(self, objects: List[Tuple[List[ARC_Object], List[ARC_Object]]]):
         self.objects = objects
@@ -233,10 +233,11 @@ class RelationGraph():
         
         # assumes a line is drawn between two objects or the borders of the grid
         if dsl_function == dsl.draw_line:
-            coords = [x.E, x.W, x.N, x.S for x in self.id_to_object.values()]
+            coords = [coord for obj in self.id_to_object.values() for coord in (obj.E, obj.W, obj.N, obj.S)]
             coords.extend([0, object.parent.width-1, object.parent.height-1])
             coords = set(coords)
             colors = set([obj.color for id, obj in self.id_to_object.items() if "output" in id])
+            functions = []
             for s0 in coords:
                 for s1 in coords:
                     for e0 in coords:
@@ -246,14 +247,13 @@ class RelationGraph():
                                 end = [e0, e1]
                                 if start != end:
                                     functions.append(lambda obj: dsl.draw_line(obj, start, end, 1))
-        
+            return functions
         # im  not sure if this actually works
         if dsl_function == dsl.translate:
             return self.find_translate_arguments(object)
         
         if dsl_function == dsl.tile:
-            
-            return [dsl.tile]
+            return self.find_tile_arguments(object)
         
     def find_tile_arguments(self, tile_obj: ARC_Object) -> List[callable]:
         x_scale = tile_obj.width
@@ -263,7 +263,8 @@ class RelationGraph():
         same_shape_objects = filter_by_shape(output_objects, tile_obj)
         same_shape_objects.sort(key=lambda x: abs(x.top_left[0] - tile_obj.top_left[0]) + abs(x.top_left[1] - tile_obj.top_left[1]))
         if len(same_shape_objects) > 1:
-            directions = [[same_shape_objects[1][0] - same_shape_objects[0][0], same_shape_objects[1][1] - same_shape_objects[0][1]]]
+            directions = [[same_shape_objects[1].top_left[0] - same_shape_objects[0].top_left[0],
+                           same_shape_objects[1].top_left[1] - same_shape_objects[0].top_left[1]]]
         else: # its doomed try everything...
             directions = [[0, x_scale], [y_scale, 0], [0, -y_scale], [-x_scale, 0], 
                           [x_scale, y_scale], [-x_scale, -y_scale], [x_scale, -y_scale], [-x_scale, y_scale]]
@@ -391,7 +392,7 @@ def filter_by_shape(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_O
     Filter a set of objects based on their shape.
     
     """
-    return [obj for obj in objects if (obj.grid !=0) == (target.grid !=0)]
+    return [obj for obj in objects if ((obj.grid !=0) == (target.grid !=0)).all()]
 
 def filter_by_size(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_Object]:
     """
