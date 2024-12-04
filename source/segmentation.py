@@ -69,6 +69,7 @@ def extract_objects(source_object, method='color', print_on_init=False, embeddin
                 print('New Object')
                 print(object.get_grid())
             source_object.add_child(object)
+            object.set_parent(source_object)
         return arc_objects
     else:
         raise ValueError(f"Invalid method: {method}")
