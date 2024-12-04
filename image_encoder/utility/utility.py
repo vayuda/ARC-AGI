@@ -151,7 +151,11 @@ def plot_attention_map(attention_matrix, idx, size=(32,32)):
     plt.figure(figsize=(6, 6))
     plt.imshow(attention_map, cmap='viridis', interpolation='nearest')
     plt.colorbar(label='Attention Score')
-    plt.title(f'Attention Map for Index {idx}')
+
+    if idx == 0:
+        plt.title('Attention Map for CLS Token')
+    else:
+        plt.title(f'Attention Map for Index {idx}')
     plt.axis('off')
     plt.show()
 

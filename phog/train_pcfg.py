@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from torch.cuda.amp import autocast, GradScaler
 
-# Need to add root to sys.path to import source and image_encoder
 current_file_dir = os.path.abspath(os.path.dirname(__file__))
 root = os.path.abspath(os.path.join(current_file_dir, ".."))
 if root not in sys.path:
@@ -21,9 +20,9 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Device: {device}")
 
 
-# Import our data yielder
-data_folder = 'training'
+# Defining hyperparams
 loader_params = {
+    'datafolder': 'training',
     'batch_size': 1,
     'shuffle': True,
     'only_inputs': True,
@@ -32,7 +31,7 @@ loader_params = {
     'max_steps': 1,
     'p_use_base': 0.1,
 }
-data_yielder = loader.get_pcfg_datayielder(data_folder, loader_params)
+data_yielder = loader.get_pcfg_datayielder(**loader_params)
 
 # Instantiate our Encoder classifier
 dsl_list = data_yielder.label_ops

@@ -105,7 +105,8 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
             # Prevent transformations that lead to single element objects
             if len(temp_obj_list) < 2:
                 continue
-            
+
+            obj_idx += 1   # Need to add 1 to account for base object
             transforms, intermediate_objs, obj_indices = _check_triviality(new_base, transforms+[func], obj_indices+[obj_idx], intermediate_objs+[new_base])
         
     base_obj = intermediate_objs[-1]

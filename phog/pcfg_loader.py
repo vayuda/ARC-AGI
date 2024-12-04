@@ -29,18 +29,12 @@ def _get_data_fp(foldername):
     return folder_path
 
 
-def get_pcfg_datayielder(foldername, loader_params):
-    """
-        Function for easy external calling that returns our dataloader given loader params and a filename.
-
-        Inputs:
-            foldername (str): Name of file we'll load our data from. Input to 'get_data_fp'
-            loader_params (dict): Dictionary of our loader parameters
-    """
-    fp = _get_data_fp(foldername)
-    yielder_dataset = JSONDataset(fp, only_inputs=loader_params['only_inputs'])
-    yielder_dataloader = ARC_Yielder_DataLoader(yielder_dataset, batch_size=loader_params['batch_size'], shuffle=loader_params['shuffle'])
-    data_yielder = ARC_DataYielder(yielder_dataloader, rand_transform, get_dsl_operations(), step_depth=loader_params['moves_per_step'], max_steps=loader_params['max_steps'], p_use_base=loader_params['p_use_base'], print_steps=loader_params['print_steps'])
+def get_pcfg_datayielder(datafolder, batch_size, moves_per_step, max_steps, p_use_base, shuffle=True, only_inputs=True, print_steps=False, **kwargs):
+    """ Function for easy external calling that returns our dataloader given loader params and a filename. """
+    fp = _get_data_fp(datafolder)
+    yielder_dataset = JSONDataset(fp, only_inputs=only_inputs)
+    yielder_dataloader = ARC_Yielder_DataLoader(yielder_dataset, batch_size=batch_size, shuffle=shuffle)
+    data_yielder = ARC_DataYielder(yielder_dataloader, rand_transform, get_dsl_operations(), step_depth=moves_per_step, max_steps=max_steps, p_use_base=p_use_base, print_steps=print_steps)
     return data_yielder
 
 
