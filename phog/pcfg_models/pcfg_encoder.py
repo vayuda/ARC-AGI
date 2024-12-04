@@ -1,10 +1,10 @@
 import os
 import sys
-import datetime
+from datetime import datetime
 
 import torch
 import torch.nn as nn
-import torch.functional as F
+from torch.nn import functional as F
 
 # Need to add root to sys.path to import source and image_encoder
 current_file_dir = os.path.abspath(os.path.dirname(__file__))
@@ -13,20 +13,7 @@ if root not in sys.path:
     sys.path.append(root)
 
 import source as source
-
-
-
-
-
-# Need an encoder model with a few different 'CLS' tokens that we'll use
-# One will be used to get the last layer of attention and try to use that to predict the objects that we apply this to
-# One will be used to classify the correct DSL operation that shoud occur next
-
-# WIll need it to be able to accept two different types of inputs
-# One with 'attended obj' and the other without.
-# For the one with attended obj, you compute the two part loss plus classification
-# For the one without, you will end up doing multi-class classification using only the classification head
-
+import image_encoder as image_encoder
 
 
 class AttentionHead(nn.Module):
@@ -52,17 +39,17 @@ class AttentionHead(nn.Module):
             Input:  [B x T x C] 
             Output: [B x T x head_size] 
         """
-        B,T,C = x.shape
-        k = self.K(x)       # [B x T x head_size]
-        q = self.Q(x)       # [B x T x head_size]
-        v = self.V(x)       # [B x T x head_size]
+        k = self.K(x)       # [T x head_size]
+        q = self.Q(x)       # [T x head_size]
+        v = self.V(x)       # [T x head_size]
         
-        affinities = q @ k.transpose(-2, -1) * k.shape[-1]**(-0.5)   # [B x T x T]
-        affinities = F.softmax(affinities, dim=-1)                   # [B x T x T]
+        affinities = q @ k.T * k.shape[-1]**(-0.5)   # [T x T]
+        obj_affinities = affinities[1:2, :].clone()  # [1 x T]
+        affinities = F.softmax(affinities, dim=-1)   # [T x T]
         affinities = self.dropout(affinities)
         
-        out = affinities @ v    # [B x T x head_size]
-        return out, affinities  # [B x T x head_size]
+        out = affinities @ v    # [T x head_size]
+        return out, obj_affinities  # [T x head_size]
 
 
 class MultiHeadAttention(nn.Module):
@@ -75,15 +62,15 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, x):
-        """ x is of shape [B x T x C] """
+        """ x is of shape [T x C] """
         outputs, affinities = [], []
         for head in self.heads:
-            out, affinity = head(x)
+            out, obj_affinity = head(x)
             outputs.append(out)
-            affinities.append(affinity)
+            affinities.append(obj_affinity)
         
-        out = torch.cat(outputs, dim=-1)   # [B x T x head_size*n_head]
-        out = self.dropout(self.proj(out))   # [B x T x C]
+        out = torch.cat(outputs, dim=-1)   # [T x head_size*n_head]
+        out = self.dropout(self.proj(out))   # [T x C]
         return out, affinities
                  
 
@@ -99,8 +86,8 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        """ x is of shape [B x T x C] """
-        return self.nn(x)   # [B x T x C]
+        """ x is of shape [T x C] """
+        return self.nn(x)   # [T x C]
 
 
 class AttentionBlock(nn.Module):
@@ -113,7 +100,7 @@ class AttentionBlock(nn.Module):
         self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x, attention_maps):
-        """ Input and output both of shape [B x T x C] """
+        """ Input and output both of shape [T x C] """
         x_res = x
         x, att_map = self.attention(self.ln1(x))
         x = x_res + x
@@ -126,7 +113,7 @@ class AttentionBlock(nn.Module):
 
 
 class PCFG_Encoder(nn.Module):
-    def __init__(self, n_embd, n_head, n_layer, ff_hd, dropout, block_size, dsl_mapping, embedding_model=None, print_statements=True, device='cpu', **kwargs):
+    def __init__(self, n_embd, n_head, n_layer, ff_hd, dropout, block_size, dsl_mapping, embedding_model_fp, freeze_emb_model=True, print_statements=True, device='cpu', **kwargs):
         """
         Encoder Model from Attention is All You Need 
 
@@ -144,24 +131,22 @@ class PCFG_Encoder(nn.Module):
         self.device = device
         self.model_params = {
             key: value for key, value in locals().items()
-            if key in ["n_embd", "n_head", "n_layer", "ff_hd", "dropout", "block_size", "dsl_mapping"]
+            if key in ["n_embd", "n_head", "n_layer", "ff_hd", "dropout", "block_size", "dsl_mapping", "embedding_model_fp", "freeze_emb_model"]
         }
 
         # Instantiate special tokens
-        self.pad_token = nn.Parameter(torch.randn(1, 1, n_embd, device=device) * 0.02)
-        self.sep_token = nn.Parameter(torch.randn(1, 1, n_embd, device=device) * 0.02)
-        self.cls_dsl_token = nn.Parameter(torch.randn(1, 1, n_embd, device=device) * 0.02)
-        self.cls_obj_token = nn.Parameter(torch.randn(1, 1, n_embd, device=device) * 0.02)
+        self.special_tokens = nn.Parameter(torch.randn(4, n_embd, device=device) * 0.02)   # cls_dsl, cls_obj, pad, sep
         self.dsl_mapping = dsl_mapping
         
-        self.pos_embd_table = nn.Embedding(num_embeddings=block_size, embedding_dim=n_embd)
+        self.pos_embd_table = nn.Embedding(num_embeddings=block_size, embedding_dim=n_embd, device=device)
         self.blocks = nn.ModuleList([AttentionBlock(n_embd, n_head, ff_hd, dropout, device) for _ in range(n_layer)])
         self.ln_f = nn.LayerNorm(n_embd)
+        self.dsl_class_head = nn.Linear(n_embd, len(dsl_mapping), bias=False)
         self.apply(self._init_weights)
-        self.set_embedding_model(embedding_model)
-
+        self.load_embedding_model(embedding_model_fp, freeze_emb_model)
+        
         if print_statements:
-            print(f"Vision Transformer instantiated with {sum(p.numel() for p in self.parameters() if p.requires_grad):,} parameters.")
+            print(f"PCFG encoder instantiated with {sum(p.numel() for p in self.parameters() if p.requires_grad):,} parameters.")
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -171,44 +156,33 @@ class PCFG_Encoder(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, input):
+    def forward(self, x):
         """ Input list of ARC Objects and strings """
-        x = self.embed_input(input)     # [T x C]
         T, C = x.shape
         x += self.pos_embd_table(torch.arange(T, device=self.device))
         
         attention_maps = None
-        for block in self.blocks:
-            x, attention_maps = block(x, attention_maps)
-        x = self.ln_f(x)         # [B x T x C]
-
-        return x, attention_maps
-
-    def embed_input(self, input):
-        if self.embedding_model is None:
-            raise RuntimeError("self.embedding_model cannot be None.")
-        x = torch.zeros((len(input), self.model_params['n_embd']))
-        for i, obj in enumerate(input):
-            if obj == "<PAD>":
-                x[:, i] = self.pad_token
-            elif obj == "<SEP>":
-                x[:, i] = self.sep_token
-            elif obj.isinstance(source.ARC_Object):
-                obj.set_embedding(self.embedding_model)
-                x[:, i] = obj.embedding
+        for i, block in enumerate(self.blocks):
+            if i == len(self.blocks)-1:
+                x, attention_maps = block(x, attention_maps)
             else:
-                raise NameError("Input contains object that is not '<PAD>', '<SEP>', or an ARC_Object.")
-        x = torch.cat((self.cls_dsl_token, self.cls_obj_token, x), dim=1)
-        
-        return x
+                x, _ = block(x, attention_maps)
+        x = self.ln_f(x)         # [T x C]
+        dsl_cls = self.dsl_class_head(x[0, :])
+        obj_att = torch.cat(attention_maps, dim=0)   # num_heads x T
+        obj_att = obj_att.sum(dim=0)        
+        return dsl_cls, obj_att
+    
+    def get_special_tokens(self, device):
+        return self.special_tokens.to(device)
 
-    def set_embedding_model(self, embedding_model):
-        if embedding_model is None:
-            self.set_embedding_model = None
-        else:
-            self.embedding_model = embedding_model
-            # Need to turn off gradient updates for the embedding model.
-            self.embedding_model.requires_grad = False
+    def load_embedding_model(self, embedding_model_fp, freeze_emb_model):
+        self.embedding_model_fp = embedding_model_fp
+        self.freeze_emb_model = freeze_emb_model
+        self.embedding_model = source.embedding.load_ViT(embedding_model_fp, device=self.device)
+        if freeze_emb_model:
+            for param in self.embedding_model.parameters():
+                param.requires_grad = False
 
     def save_model(self):
         """Save the model to a file."""
@@ -221,13 +195,13 @@ class PCFG_Encoder(nn.Module):
             'model_state_dict': self.state_dict(),
             'model_params': self.model_params,
         }, save_path)
-        print(f"Model and transformation embeddings saved to {save_path}")
-    
+        print(f"Model and embedding model saved to {save_path}")
+
     @classmethod
     def load_model(cls, path, print_statements=False, device='cpu'):
-        """Load the model and transformation embeddings from a file."""
+        """Load the model and embedding model from a file."""
         checkpoint = torch.load(path, map_location=torch.device(device))
-        checkpoint['model_params']['device'] = device        
+        checkpoint['model_params']['device'] = device                
         model = cls(**checkpoint['model_params'], print_statements=print_statements)
         model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         return model.to(device)

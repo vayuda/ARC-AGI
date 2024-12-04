@@ -33,6 +33,8 @@ dsl_obj_operations = [
     draw_line,
 ]
 
+dsl_obj_probs = [0.1, 0.05, 0.05, 0.05, 0.15, 0.15, 0.15, 0.2, 0.1]
+
 class InvalidTransformationError(Exception):
     pass
 
@@ -57,9 +59,9 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
     obj_list, seg_method = _extract_from_base(base_obj, seg_method=0)
     original_objs = [base_obj] + obj_list
     transforms = []
+    obj_indices = []
     intermediate_objs = [deepcopy(base_obj)]
     attempts, max_attempts = 0, 15
-    obj_idx = 0
 
     if use_base:
         num_transforms = random.randint(1, 3) if depth == None else depth
@@ -78,14 +80,14 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
             obj_list, _ = _extract_from_base(new_base, seg_method)
             if len(obj_list) == 0:
                 continue
-
-            transforms, intermediate_objs = _check_triviality(new_base, transforms+[func], intermediate_objs+[new_base])
+            
+            transforms, intermediate_objs, obj_indices = _check_triviality(new_base, transforms+[func], obj_indices+[0], intermediate_objs+[new_base])
         
     else:
         num_transforms = random.randint(1, 5) if depth == None else depth
         while len(transforms) < num_transforms:
             attempts += 1
-            func = random.choice(dsl_obj_operations)
+            func = random.choices(dsl_obj_operations, weights=dsl_obj_probs, k=1)[0]
             base_obj = deepcopy(intermediate_objs[-1])
             obj_list, _ = _extract_from_base(base_obj, seg_method)
             
@@ -104,22 +106,23 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
             if len(temp_obj_list) < 2:
                 continue
             
-            transforms, intermediate_objs = _check_triviality(new_base, transforms+[func], intermediate_objs+[new_base])
+            transforms, intermediate_objs, obj_indices = _check_triviality(new_base, transforms+[func], obj_indices+[obj_idx], intermediate_objs+[new_base])
         
     base_obj = intermediate_objs[-1]
     obj_list, _ = _extract_from_base(base_obj, seg_method)
     
     transformed_objs = [base_obj] + obj_list
-    return original_objs, transformed_objs, transforms, obj_idx
+    return original_objs, transformed_objs, transforms, obj_indices
 
-def _check_triviality(new_base: ARC_Object, transforms: List, intermediate_objs: List[ARC_Object]):
+def _check_triviality(new_base: ARC_Object, transforms: List, obj_indices: List, intermediate_objs: List[ARC_Object]):
     for i in range(len(intermediate_objs)-1):
         obj = intermediate_objs[i]
         if new_base.grid.shape == obj.grid.shape and np.array_equal(new_base.grid, obj.grid):
             transforms = transforms[:i]
+            obj_indices = obj_indices[:i]
             intermediate_objs = intermediate_objs[:i+1]
             break
-    return transforms, intermediate_objs
+    return transforms, intermediate_objs, obj_indices
 
 
 

@@ -63,11 +63,17 @@ class ARC_Object:
         return self.grid
     
 
-    def set_embedding(self, embedding_model):
+    def set_embedding(self, embedding_model, use_grads=False, send_to_cpu=False):
         grid_tensor = torch.tensor(self.grid).unsqueeze(0).to(embedding_model.device)
-        with torch.no_grad():
+        if use_grads:
             cls_logits, _, _ = embedding_model(grid_tensor, save_attn=False, temperature=1)
-        self.embedding = cls_logits.squeeze(0).squeeze(0).cpu()
+        else:
+            with torch.no_grad():
+                cls_logits, _, _ = embedding_model(grid_tensor, save_attn=False, temperature=1)
+    
+        self.embedding = cls_logits.squeeze(0).squeeze(0)
+        if send_to_cpu:
+            self.embedding.to('cpu')
 
 
     def plot_grid(self):
