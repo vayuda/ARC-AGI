@@ -105,7 +105,32 @@ def plot_grayscale(grid):
     plt.axis('off')  # Turn off the axes for better display
     plt.show()
     
+def visualize_object(obj):
+    if obj.parent is not None:
+        grid = np.zeros_like(obj.parent.grid)
+        
+        grid[obj.top_left[0]:obj.top_left[0] + obj.height, obj.top_left[1]:obj.top_left[1] + obj.width] = obj.grid
+    else:
+        grid = obj.grid
+    cell_size = 13
+    border_size = 1
+    # Create a new grid to hold the object
+    img_width = grid.shape[1] * cell_size + (grid.shape[1] + 1) * border_size
+    img_height = grid.shape[0] * cell_size + (grid.shape[0] + 1) * border_size
 
+    img = Image.new('RGB', (img_width, img_height), COLOR_TO_HEX[BORDER])
+    draw = ImageDraw.Draw(img)
+
+    # Draw colored rectangles for each cell
+    for i, row in enumerate(grid):
+        for j, color in enumerate(row):
+            x = j * (cell_size + border_size) + border_size
+            y = i * (cell_size + border_size) + border_size
+            draw.rectangle([x, y, x + cell_size, y + cell_size], fill=COLOR_TO_HEX[color], outline=COLOR_TO_HEX[BORDER])
+    
+    return img
+
+    
 def visualize_problem(puzzle_id: str):
     with open(f"data/training/{puzzle_id}.json", 'r') as f:
         data = json.load(f)
