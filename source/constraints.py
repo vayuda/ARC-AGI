@@ -3,19 +3,20 @@ from typing import List, Tuple
 from .objects import ARC_Object
 import networkx as nx
 import matplotlib.pyplot as plt
+from . import dslfrom 
 from collections import Counter
 
 class RelationGraph():
     def __init__(self, objects: List[Tuple[List[ARC_Object], List[ARC_Object]]]):
         self.objects = objects
-        self.id_to_objects = {}
-        self.objects_to_id = {}
+        self.id_to_object = {}
+        self.object_to_id = {}
         self.nexamples = len(objects)
         self.graph = nx.MultiGraph()
         self.relation_types = ['color', 'shape', 'y_pos', 'x_pos']
         def add_relations(obj1, obj2):
-            id1 = self.objects_to_id[obj1]
-            id2 = self.objects_to_id[obj2]
+            id1 = self.object_to_id[obj1]
+            id2 = self.object_to_id[obj2]
             if id1 == id2:
                 return
             
@@ -31,8 +32,8 @@ class RelationGraph():
         def register_objects(objects_list, prefix, example_n):
             for i, obj in enumerate(objects_list):
                 id = f"{prefix}_ex{example_n}_{i}"
-                self.objects_to_id[obj] = id
-                self.id_to_objects[id] = obj
+                self.object_to_id[obj] = id
+                self.id_to_object[id] = obj
                 self.graph.add_node(id)
             
             # Add relations between objects in the same list
@@ -142,7 +143,7 @@ class RelationGraph():
                     break
                 
             if is_bijection:
-                print('Bijection found', relation)
+                # print('IO Bijection found', relation)
                 # create a dictionary of bijections
                 mapping = {}
                 for graph in graphs:
@@ -151,13 +152,14 @@ class RelationGraph():
                             mapping[u] = v
                 return (relation, mapping)
     
-    def find_input_pairs(self):
+    def find_input_groups(self, key_example='0'):
         '''
         finds mappings between inputs across exmaples for each relation type
         currently has a hard requirement that the number of objects in each example is the same
         later we can work on clustering similar objects to reduce it to a bijection
         another easier step is to store partial mappings (works for subset of examples) because the whole point of this is to reduce the search space 
         '''
+        all_mappings = {}
         for relation in self.relation_types:
             is_bijection = True
             graphs = []
@@ -171,133 +173,215 @@ class RelationGraph():
                     break
             
             if is_bijection:
-                print('Bijection found', relation)
+                # print('Example Bijection found', relation)
                 # group all objects of the same relation
                 groups = {}
+                mapping = {}
                 for graph in graphs:
                     for (u, v, k, d) in graph.edges(data=True, keys=True):
                         if d[k] not in groups:
                             groups[d[k]] = set()
                         groups[d[k]].add(u)
                         groups[d[k]].add(v)
-                return (relation, groups)
-                   
-
-def find_translate_arguments(relation_graph: RelationGraph, object: ARC_Object) -> Tuple[str, str]:
-    '''
-    Uses the graph to determine how much to translate the input to get the output
-    Assume (for now) that there exists a bijection between the input and output objects as well as between respective inputs/outputs amongst examples
-    This means: every problem has the same number of objects and the same relations between them
-    Later we can work on clustering 'similar objects' to reduce it to a bijection
-    '''
-    # assume object is not translated off screen as otherwise a bijection wouldnt be found :P
-    obj_id = relation_graph.objects_to_id[object]
-    # example_number = obj_id.split('_')[1]
-    # grid_dim_x = relation_graph.objects[0][0][0].parent.grid.shape[1]
-    # grid_dim_y = relation_graph.objects[0][0][0].parent.grid.shape[0]
-    # max_dist_left = object.top_left[1]
-    # max_dist_right = grid_dim_x - object.top_left[1] - object.width
-    # max_dist_up = object.top_left[0]
-    # max_dist_down = grid_dim_y - object.top_left[0] - object.height
-    # options_x = set(range(-max_dist_left, max_dist_right + 1))
-    # options_y = set(range(-max_dist_up, max_dist_down + 1))
+                # reformat groups so that key is object from example 0 and value is a set of objects from other examples
+                for group in groups.values():
+                    key_obj = [obj for obj in group if key_example in obj][0]
+                    mapping[key_obj] = group
+                all_mappings[relation] = mapping
+        return all_mappings
     
+    def find_important_objects(self, object_id):
+        '''
+        returns a tuple (output_object_id, (input_group_ids))
         
-    # find bijection relation across io and across inputs
-    relation, io_mapping = relation_graph.find_io_pairs()
-    assert relation, 'No io bijections found'
-    target_id = io_mapping[obj_id]
-    target_obj = relation_graph.id_to_objects[target_id]
-    
-    
-    relation, related_input_examples = relation_graph.find_input_pairs()
-    print(related_input_examples)
-    if relation:
-        for _, group in related_input_examples.items():
-            if obj_id in group:
-                related_ids = list(group)
-                related_objects = [relation_graph.id_to_objects[id] for id in group]
-                target_objects = [relation_graph.id_to_objects[io_mapping[id]] for id in group]
+        '''
+        io_relation, io_mapping = self.find_io_pairs()
+        target_id = io_mapping[object_id]
+        possible_mappings = self.find_input_groups(object_id.split('_')[1])
+        for relation, input_groups in possible_mappings.items():
+            if relation == io_relation:
                 break
-    else:
-        related_ids = [obj_id]
-        related_objects = [object]
-        target_objects = [target_obj]
-    # find distance to target object(s)
-    dist_x = [target_objects[n].top_left[1] for n in range(len(related_objects))]
-    dist_y = [target_objects[n].top_left[0] for n in range(len(related_objects))]
-    
-    # get index of current object in the list of related objects
-    idx = related_ids.index(obj_id)
-    
-    # loop through properties in order of deemed relevance and find one that matches the distance to the target object(s) 
-    y_formula = []
-    x_formula = []
-    for prop in [get_latitude, get_longitude]:
-        # get a property of an object in the input object example number
-        for context in relation_graph.objects[int(related_ids[idx].split("_")[1][-1])][0]:
-            context_id = relation_graph.objects_to_id[context]
-            # check if this property works across all examples
-            check_add_y = 0 # check when you add it
-            check_sub_y = 0 # check when you subtract it
-            print('context obj id: ', context_id)
-            for i, robj_id in enumerate(related_ids):
-                print('\t related object: ',robj_id)
-                # get the same context object in the example we are checking
-                c_obj_id = -1
-                for _, group in related_input_examples.items():
-                    if context_id in group:
-                        c_obj_id = [id for id in group if robj_id.split('_')[1] == id.split('_')[1]][0]   
-                print('\t\t context for related:',end=" ")
-                if c_obj_id != -1:
-                    print(c_obj_id, ' prop val', prop(relation_graph.id_to_objects[c_obj_id]),' dist ', dist_y[i])
-                else:
-                    print('didnt find context')
-                if c_obj_id != -1 and prop(relation_graph.id_to_objects[c_obj_id]) == dist_y[i]:
-                    check_add_y += 1
-                elif c_obj_id != -1 and prop(relation_graph.id_to_objects[c_obj_id]) == -dist_y[i]:
-                    check_sub_y += 1
-                else:
-                    break
-            if check_add_y == len(related_ids):
-                y_formula.append(('+', prop.__name__, context_id))
-            if check_sub_y == len(related_ids):
-                y_formula.append(('-', prop, context))
+        return (target_id, input_groups[object_id])
+                 
+    def get_args(self, dsl_function, object)-> List[callable]:
+        # simple heuristics
+        if dsl_function == dsl.color:
+            functions = []
+            colors_in_problem = set([obj.color for id, obj in self.id_to_object.items() if "output" in id])
+            for color in colors_in_problem:
+                functions.append(lambda obj: dsl.color(obj, color))
                 
-    for prop in [get_latitude, get_longitude]:
-        # get a property of an object in the input object example number
-        for context in relation_graph.objects[int(related_ids[idx].split("_")[1][-1])][0]:
-            context_id = relation_graph.objects_to_id[context]
-            # check if this property works across all examples
-            check_add_y = 0 # check when you add it
-            check_sub_y = 0 # check when you subtract it
-            print('context obj id: ', context_id)
-            for i, robj_id in enumerate(related_ids):
-                print('\t related object: ',robj_id)
-                # get the same context object in the example we are checking
-                c_obj_id = -1
-                for _, group in related_input_examples.items():
-                    if context_id in group:
-                        c_obj_id = [id for id in group if robj_id.split('_')[1] == id.split('_')[1]][0]   
-                print('\t\t context for related:',end=" ")
-                if c_obj_id != -1:
-                    print(c_obj_id, ' prop val', prop(relation_graph.id_to_objects[c_obj_id]),' dist ', dist_y[i])
-                else:
-                    print('didnt find context')
-                if c_obj_id != -1 and prop(relation_graph.id_to_objects[c_obj_id]) == dist_x[i]:
-                    check_add_y += 1
-                elif c_obj_id != -1 and prop(relation_graph.id_to_objects[c_obj_id]) == -dist_x[i]:
-                    check_sub_y += 1
-                else:
-                    break
-            if check_add_y == len(related_ids):
-                x_formula.append(('+', prop.__name__, context_id))
-            if check_sub_y == len(related_ids):
-                x_formula.append(('-', prop, context))
+            return functions
+        
+        if dsl_function == dsl.recolor:
+            functions = []
+            colors_in_input = set([obj.color for id, obj in self.id_to_object.items() if "input" in id])
+            colors_in_output = set([obj.color for id, obj in self.id_to_object.items() if "output" in id])
+            for color1 in colors_in_input:
+                for color2 in colors_in_output:
+                    functions.append(lambda obj: dsl.color(obj, color1, color2))
                 
-    return (y_formula, x_formula)
+            return [lambda obj: dsl.recolor(obj, i, j) for i in range(1,10) for j in range(1,10)]
         
+        if dsl_function == dsl.rotate:
+            return [lambda obj: dsl.rotate(obj, i) for i in range(1,4)]
         
+        # not sure if this is needed but just for standardization may be helpful
+        if dsl_function == dsl.flip:
+            return [dsl.flip]
+        
+        if dsl_function == dsl.delete:
+            return [dsl.delete]
+        
+        # assumes a line is drawn between two objects or the borders of the grid
+        if dsl_function == dsl.draw_line:
+            coords = [coord for obj in self.id_to_object.values() for coord in (obj.E, obj.W, obj.N, obj.S)]
+            coords.extend([0, object.parent.width-1, object.parent.height-1])
+            coords = set(coords)
+            colors = set([obj.color for id, obj in self.id_to_object.items() if "output" in id])
+            functions = []
+            for s0 in coords:
+                for s1 in coords:
+                    for e0 in coords:
+                        for e1 in coords:
+                            for color in colors:
+                                start = [s0, s1]
+                                end = [e0, e1]
+                                if start != end:
+                                    functions.append(lambda obj: dsl.draw_line(obj, start, end, 1))
+            return functions
+        # im  not sure if this actually works
+        if dsl_function == dsl.translate:
+            return self.find_translate_arguments(object)
+        
+        if dsl_function == dsl.tile:
+            return self.find_tile_arguments(object)
+        
+    def find_tile_arguments(self, tile_obj: ARC_Object) -> List[callable]:
+        x_scale = tile_obj.width
+        y_scale = tile_obj.height
+        n = self.object_to_id[tile_obj].split('_')[1]
+        output_objects = [obj for id, obj in self.id_to_object.items() if f"output_{n}" in id]
+        same_shape_objects = filter_by_shape(output_objects, tile_obj)
+        same_shape_objects.sort(key=lambda x: abs(x.top_left[0] - tile_obj.top_left[0]) + abs(x.top_left[1] - tile_obj.top_left[1]))
+        if len(same_shape_objects) > 1:
+            directions = [[same_shape_objects[1].top_left[0] - same_shape_objects[0].top_left[0],
+                           same_shape_objects[1].top_left[1] - same_shape_objects[0].top_left[1]]]
+        else: # its doomed try everything...
+            directions = [[0, x_scale], [y_scale, 0], [0, -y_scale], [-x_scale, 0], 
+                          [x_scale, y_scale], [-x_scale, -y_scale], [x_scale, -y_scale], [-x_scale, y_scale]]
+        
+        ends = [0,1, len(same_shape_objects)]
+        return [lambda obj, direction=direction: dsl.tile(obj, direction, end) for direction in directions for end in ends]
+        
+    def find_translate_arguments(self, object: ARC_Object) -> List[callable]:
+        '''
+        Uses the graph to determine how much to translate the input to get the output
+        Assume (for now) that there exists a bijection between the input and output objects as well as between respective inputs/outputs amongst examples
+        This means: every problem has the same number of objects and the same relations between them
+        Later we can work on clustering 'similar objects' to reduce it to a bijection
+        '''
+        # assume object is not translated off screen as otherwise a bijection wouldnt be found :P
+        id2object = self.id_to_object
+        obj_id = self.object_to_id[object]
+        example_id = obj_id.split('_')[1]
+        # print(object.grid)
+        # find corresponding object in output
+        relation, io_mapping = self.find_io_pairs()
+        assert relation, 'No io bijections found'
+        target_id = io_mapping[obj_id]
+        target_obj = id2object[target_id]
+        
+        # find corresponding objects in other examples
+        possible_mappings = self.find_input_groups(key_example = example_id)
+        # prefer when they are related by color
+        for relation, input_groups in possible_mappings.items():
+            if 'color' in relation:
+                break
+        
+        # find x,y of target object for each related object across examples
+        # print(input_groups)
+        # print(io_mapping)
+        target_x = {id: id2object[io_mapping[id]].top_left[1] for id in input_groups[obj_id]}
+        target_y = {id: id2object[io_mapping[id]].top_left[0] for id in input_groups[obj_id]}
+        # print(target_y, target_x)
+        
+        # loop through properties in order of deemed relevance and find one that matches the distance to the target object(s) 
+        y_formula = []
+        x_formula = []
+        
+        def validate_property(object_id, prop: callable, target_map, input_groups, argument):
+            formula = []
+
+            def create_translate_function(obj, offset, axis):
+                if axis == 'y':
+                    return lambda obj: dsl.translate(obj, (offset, 0))
+                else:
+                    return lambda obj: dsl.translate(obj, (0, offset))
+
+            # for all possible objects in the current example
+            for context_id in input_groups.keys():
+                # print('context_id', context_id)
+                check_add = 0
+                # for all related objects in other examples
+                for related_id in input_groups[object_id]:
+                    # get the corresponding context object in the other example
+                    related_context_ids = input_groups[context_id]
+                    n = related_id.split('_')[1]
+                    for related_context_id in related_context_ids:
+                        if n in related_context_id:
+                            break
+                    # check if property matches the target
+                    
+                    if prop(id2object[related_context_id]) == target_map[related_id]:
+                        # print('\t',prop.__name__, context_id, prop(id2object[related_context_id]), target_map[related_id])
+                        check_add += 1
+                    else:
+                        break
+                if check_add == len(input_groups[object_id]):
+                    if argument == 'y':
+                        offset = prop(id2object[context_id]) - id2object[object_id].top_left[0]
+                        formula.append(create_translate_function(obj=None, offset=offset, axis='y'))
+                    else:
+                        offset = prop(id2object[context_id]) - id2object[object_id].top_left[1]
+                        formula.append(create_translate_function(obj=None, offset=offset, axis='x'))
+            return formula
+
+        # try based on x/y position of other objects in the same example
+        for prop in [get_N, get_E, get_S, get_W]:
+            y_formula += validate_property(obj_id, prop, target_y, input_groups, 'y')
+            x_formula += validate_property(obj_id, prop, target_x, input_groups, 'x')
+        
+        # WIP but maybe it works for other problems..
+        # dist_props = [lambda x: object.top_left[0] - lattitude_dist(object, x),
+        #             lambda x: object.top_left[0] + lattitude_dist(object, x),
+        #             lambda x: object.top_left[1] - lattitude_dist(object, x),
+        #             lambda x: object.top_left[1] + lattitude_dist(object, x),
+        #             lambda x: object.top_left[0] - longitude_dist(object, x),
+        #             lambda x: object.top_left[0] + longitude_dist(object, x),
+        #             lambda x: object.top_left[1] - longitude_dist(object, x),
+        #             lambda x: object.top_left[1] + longitude_dist(object, x)]
+        
+        # for prop in dist_props:
+        #     y_formula += validate_property(obj_id, prop, target_y, input_groups, self)
+        #     x_formula += validate_property(obj_id, prop, target_x, input_groups, self)
+            
+        # try based on a constant value
+        # check if dist_y is constant across all examples
+        if len(set(target_y.values())) == 1:
+            y_formula.append(('constant', target_obj.top_left[0]))     
+        
+        # check if dist_x is constant across all examples
+        if len(set(target_x.values())) == 1:
+            x_formula.append(('constant', target_obj.top_left[1]))
+        
+        combined_formulas = []
+        for y_func in y_formula:
+            for x_func in x_formula:
+                combined_formulas.append(lambda obj: x_func(y_func(obj)))
+        return combined_formulas
+        
+    #check distance to borders for current object and related ones
                     
 # filter objects (List -> smaller List or single object)
 def filter_by_color(objects: List[ARC_Object], color: int) -> List[ARC_Object]:
@@ -321,7 +405,7 @@ def filter_by_shape(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_O
     Filter a set of objects based on their shape.
     
     """
-    return [obj for obj in objects if (obj.grid !=0) == (target.grid !=0)]
+    return [obj for obj in objects if ((obj.grid !=0) == (target.grid !=0)).all()]
 
 def filter_by_size(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_Object]:
     """
@@ -332,15 +416,23 @@ def filter_by_size(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_Ob
 
 def lattitude_dist(obj1: ARC_Object, obj2: ARC_Object) -> int:
     """
-    Returns the difference in height locations of the top-left corners of two objects.
+    Assuming we cannot have overlapping objects, 
+    returns min(dist(o1.N-1,o2.S+1), dist(o1.S+1, o1.N-1))
     """
-    return abs(obj1.top_left[0] - obj2.top_left[0])
+    if abs(obj1.N - obj2.S) < abs(obj2.N - obj1.S):
+        return obj1.N - obj2.S
+    else:
+        return obj2.N - obj1.S
 
-def longitude_dist(obj1: ARC_Object, obj2: ARC_Object) -> isinstance:
+def longitude_dist(obj1: ARC_Object, obj2: ARC_Object) -> int:
     """
-    Returns the difference in width locations of the top-left corners of two objects.
+    Assuming we cannot have overlapping objects,
+    returns min(dist(o1.E+1,o2.W-1), dist(o1.W-1, o1.E+1))
     """
-    return abs(obj1.top_left[1] - obj2.top_left[1])
+    if abs(obj1.E - obj2.W) < abs(obj2.E - obj1.W):
+        return obj1.E - obj2.W
+    else:
+        return obj2.E - obj1.W
 
 def get_width(obj: ARC_Object) -> int:
     """
@@ -355,17 +447,30 @@ def get_height(obj: ARC_Object) -> int:
     """
     return obj.height
 
-def get_latitude(obj: ARC_Object) -> int:
+def get_N(obj: ARC_Object) -> int:
     '''
-    Get the latitude position of the object in the parent grid
+    Get the north most y position of the object in the parent grid
     '''
-    return obj.top_left[0]
+    return obj.N
 
-def get_longitude(obj: ARC_Object) -> int:
+def get_S(obj: ARC_Object) -> int:
     '''
-    Get the longitude position of the object in the parent grid
+    Get the south most y position of the object in the parent grid
     '''
-    return obj.top_left[1]
+    return obj.S
+
+def get_E(obj: ARC_Object) -> int:
+    '''
+    Get the east most x position of the object in the parent grid
+    '''
+    return obj.E
+
+def get_W(obj: ARC_Object) -> int:
+    '''
+    Get the west most x position of the object in the parent grid
+    '''
+    return obj.W
+
 
 # retrieve useful integer properties of objects
 def get_color(obj: ARC_Object) -> int:

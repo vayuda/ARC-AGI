@@ -49,6 +49,10 @@ def get_pcfg_datayielder(foldername, loader_params):
 # train_dataset = PHOG_ARC_DatasetWrapper(train_dataset, get_dsl_operations(), rand_transform, elems_per_image=16)
 # train_loader = PHOG_ARC_Dataloader(train_dataset, batch_size=1, shuffle=True)
 
+class SampleExhausted(Exception):
+    """Custom exception to signal that the current sample is exhausted."""
+    pass
+
 
 # ========================================================================
 # Custom Dataset, Dataset Wrapper, and DataLoader
@@ -181,13 +185,11 @@ class ARC_DataYielder:
             except StopIteration:
                 # Start a new epoch
                 self.epoch += 1
-                print(f"Epoch {self.epoch}")
                 self.dataloader_iter = iter(self.dataloader)
-                self.cur_key, self.cur_sample = next(self.dataloader_iter)
-                self.cur_key, self.cur_sample = self.cur_key[0], self.cur_sample[0]
+                raise StopIteration
 
         use_base = random.random() < self.p_use_base
-        input_objs, transformed_objs, transforms, prev_idx = self.rand_transform(self.cur_sample, depth=self.step_depth, use_base=use_base)
+        input_objs, transformed_objs, transforms, obj_indices = self.rand_transform(self.cur_sample, depth=self.step_depth, use_base=use_base)
         self.cur_sample_step += len(transforms)
         
         if len(transforms) == 0:
@@ -195,10 +197,10 @@ class ARC_DataYielder:
                 print("Moving to next sample.")
             self.cur_sample_step = 0
             self.cur_sample, self.cur_key = None, None
-            raise StopIteration  # Properly signal the end of iteration
+            raise SampleExhausted  # Properly signal the end of iteration
 
         self.cur_sample = transformed_objs[0]   # Set to the next sample
-        x, y = self._process_inputs(input_objs, transformed_objs, transforms)
+        x, y, obj_idx = self._process_inputs(input_objs, transformed_objs, transforms, obj_indices)
 
         if self.print_steps:
             print(f"Problem ID: {self.cur_key}, [{self.cur_sample_step}/{self.max_steps}]")
@@ -208,9 +210,9 @@ class ARC_DataYielder:
             print("Output:")
             x[self.elems_per_image + 1].plot_grid()
 
-        return self.cur_key, x, y, prev_idx
+        return self.cur_key, x, y, obj_idx
 
-    def _process_inputs(self, input_objs, transformed_objs, transforms):
+    def _process_inputs(self, input_objs, transformed_objs, transforms, obj_indices):
         """ Given the inputs from rand_transform, returns the data as 'x' and 'y'.
         
         x: List of ARC_Objects or <PAD> and <SEP> tokens. Length is elems_per_image*2 + 1.
@@ -222,6 +224,5 @@ class ARC_DataYielder:
         x.extend([self.pad_token] * ((self.elems_per_image*2 + 1) - len(x)))
         
         y = [self.label_ops[t] for t in transforms]
-        y.extend([-1] * (self.max_labels - len(transforms)))
         
-        return x, y
+        return x, y, obj_indices

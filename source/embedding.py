@@ -18,8 +18,8 @@ def load_resnet50():
     resnet50 = torch.nn.Sequential(*list(resnet50.children())[:-1])
     return resnet50
 
-def load_ViT(device='cpu'):
-    file = 'image_encoder/trained_models/vit_11-21-24_400k_vF.pth'
+def load_ViT(filename='vit_11-21-24_400k_vF.pth', device='cpu'):
+    file = f'image_encoder/trained_models/{filename}'
     filepath = os.path.join(root, file)
     model, _ = transformers.VisionTransformer.load_model(filepath, print_statements=True, device=device)
     model = model.to(device)
