@@ -270,7 +270,7 @@ class RelationGraph():
                           [x_scale, y_scale], [-x_scale, -y_scale], [x_scale, -y_scale], [-x_scale, y_scale]]
         
         ends = [0,1, len(same_shape_objects)]
-        return [lambda obj, direction=direction: dsl.tile(obj, direction, end) for direction in directions for end in ends]
+        return [lambda obj, direction=direction: dsl.tile(obj, tile_obj, direction, end) for direction in directions for end in ends]
         
     def find_translate_arguments(self, object: ARC_Object) -> List[callable]:
         '''
