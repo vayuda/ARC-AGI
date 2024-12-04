@@ -8,3 +8,4 @@ __pycache__/
 arc-291c/
 arc
 logs/
+trained_pcfg_models/

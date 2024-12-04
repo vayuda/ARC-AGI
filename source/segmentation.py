@@ -104,15 +104,17 @@ def get_color_masks(image):
 
 def get_contour_masks(image, freq_scale):
     """
-    Apply contour detection to the input image and return the contour masks and hierarchy.
+    Apply contour detection to the input image and return the contour masks, hierarchy,
+    and the background mask appended to the end of contour masks.
 
     Args:
         image (numpy.ndarray): A 2D numpy array representing the input image, with values expected to be between 0 and 9.
-        freq_scale (bool): If true, convert the image to scaled grayscale (based on frequency of pixel values)
+        freq_scale (bool): If true, convert the image to scaled grayscale (based on frequency of pixel values).
 
     Returns:
         tuple: A tuple containing:
             - list: A list of 2D numpy arrays (mask) where '1' represents contour areas for each contour.
+                   The background mask (non-contour areas) is appended as the last element.
             - numpy.ndarray: A hierarchy array describing parent-child contour relationships.
     """
     # Scale image values from 0-9 to 0-255
@@ -136,18 +138,25 @@ def get_contour_masks(image, freq_scale):
     unique_values = np.unique(scaled_image)
     if len(unique_values) == 1:
         mask = np.full_like(scaled_image, 1, dtype=np.uint8)
-        return [mask], None
+        background_mask = np.zeros_like(scaled_image, dtype=np.uint8)
+        return [mask, background_mask], None
 
-    # Find contours and hierarchy
     contours, hierarchy = cv2.findContours(scaled_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    
-    # Create a list of masks for each contour
     contour_masks = []
+    all_contours_mask = np.zeros_like(scaled_image, dtype=np.uint8)
+
     for i in range(len(contours)):
-        mask = np.ascontiguousarray(np.zeros_like(scaled_image, dtype=np.uint8))
+        mask = np.zeros_like(scaled_image, dtype=np.uint8)
+        mask = np.ascontiguousarray(mask)
         cv2.drawContours(mask, contours, i, 1, thickness=cv2.FILLED)
         contour_masks.append(mask)
-    
+        all_contours_mask = cv2.bitwise_or(all_contours_mask, mask)
+
+    # Compute the background mask: Pixels that are not part of any contour
+    background_mask = np.where(all_contours_mask == 0, 1, 0).astype(np.uint8)
+    if np.any(background_mask):
+        contour_masks.append(background_mask)
+
     return contour_masks, hierarchy
 
 
