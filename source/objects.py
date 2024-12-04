@@ -71,6 +71,7 @@ class ARC_Object:
             with torch.no_grad():
                 cls_logits, _, _ = embedding_model(grid_tensor, save_attn=False, temperature=1)
     
+        cls_logits = cls_logits / cls_logits.norm(dim=-1)
         self.embedding = cls_logits.squeeze(0).squeeze(0)
         if send_to_cpu:
             self.embedding.to('cpu')
