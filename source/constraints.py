@@ -141,7 +141,7 @@ class RelationGraph():
                     break
                 
             if is_bijection:
-                print('IO Bijection found', relation)
+                # print('IO Bijection found', relation)
                 # create a dictionary of bijections
                 mapping = {}
                 for graph in graphs:
@@ -171,7 +171,7 @@ class RelationGraph():
                     break
             
             if is_bijection:
-                print('Example Bijection found', relation)
+                # print('Example Bijection found', relation)
                 # group all objects of the same relation
                 groups = {}
                 mapping = {}
@@ -283,7 +283,7 @@ class RelationGraph():
         id2object = self.id_to_object
         obj_id = self.object_to_id[object]
         example_id = obj_id.split('_')[1]
-        print(object.grid)
+        # print(object.grid)
         # find corresponding object in output
         relation, io_mapping = self.find_io_pairs()
         assert relation, 'No io bijections found'
@@ -302,7 +302,7 @@ class RelationGraph():
         # print(io_mapping)
         target_x = {id: id2object[io_mapping[id]].top_left[1] for id in input_groups[obj_id]}
         target_y = {id: id2object[io_mapping[id]].top_left[0] for id in input_groups[obj_id]}
-        # print(target_y['input_ex0_0'], target_x['input_ex0_0'])
+        # print(target_y, target_x)
         
         # loop through properties in order of deemed relevance and find one that matches the distance to the target object(s) 
         y_formula = []
@@ -310,9 +310,16 @@ class RelationGraph():
         
         def validate_property(object_id, prop: callable, target_map, input_groups, argument):
             formula = []
+
+            def create_translate_function(obj, offset, axis):
+                if axis == 'y':
+                    return lambda obj: dsl.translate(obj, (offset, 0))
+                else:
+                    return lambda obj: dsl.translate(obj, (0, offset))
+
             # for all possible objects in the current example
             for context_id in input_groups.keys():
-                # print('context_id')
+                # print('context_id', context_id)
                 check_add = 0
                 # for all related objects in other examples
                 for related_id in input_groups[object_id]:
@@ -331,10 +338,11 @@ class RelationGraph():
                         break
                 if check_add == len(input_groups[object_id]):
                     if argument == 'y':
-                        tf = lambda obj: dsl.translate(obj, prop(id2object[context_id]), 0)
+                        offset = prop(id2object[context_id]) - id2object[object_id].top_left[0]
+                        formula.append(create_translate_function(obj=None, offset=offset, axis='y'))
                     else:
-                        tf = lambda obj: dsl.translate(obj, 0, prop(id2object[context_id]))
-                    formula.append(tf)
+                        offset = prop(id2object[context_id]) - id2object[object_id].top_left[1]
+                        formula.append(create_translate_function(obj=None, offset=offset, axis='x'))
             return formula
 
         # try based on x/y position of other objects in the same example
