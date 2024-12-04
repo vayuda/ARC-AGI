@@ -3,6 +3,7 @@ from typing import List, Tuple
 from .objects import ARC_Object
 import networkx as nx
 import matplotlib.pyplot as plt
+from collections import Counter
 
 class RelationGraph():
     def __init__(self, objects: List[Tuple[List[ARC_Object], List[ARC_Object]]]):
@@ -307,9 +308,12 @@ def filter_by_color(objects: List[ARC_Object], color: int) -> List[ARC_Object]:
     return [obj for obj in objects if np.all(obj.grid == color)]
 
 def most_common(objs: list[ARC_Object]) -> ARC_Object:
-    unique, count = np.unique([o.grid for o in objs], axis=0, return_counts=True)
-    image = unique[np.argmax(count)]
-    return ARC_Object(image, np.ones_like(image))
+    try:
+        unique, count = np.unique([o.grid for o in objs], axis=0, return_counts=True)
+        image = unique[np.argmax(count)]
+        return ARC_Object(image, np.ones_like(image))
+    except:
+        return None
 
 # filter a set of objects based on their properties
 def filter_by_shape(objects: List[ARC_Object], target: ARC_Object) -> List[ARC_Object]:
@@ -496,3 +500,13 @@ def getOverlap(obj1: ARC_Object, obj2: ARC_Object) -> bool:
     mask1 = obj1.grid != 0
     mask2 = obj2.grid != 0
     return mask1 & mask2
+
+def dominant_color(obj: ARC_Object) -> int:
+    flattened = obj.grid.flatten()
+    color_counts = Counter(flattened[flattened != 0])
+    
+    if color_counts:
+        dominant = color_counts.most_common(1)[0][0]
+        return dominant
+    else:
+        return -1

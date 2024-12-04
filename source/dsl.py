@@ -182,33 +182,36 @@ dsl_operations = [
 #     image = np.where(mask1 ^ mask2, obj1.grid, 0)
 #     return ARC_Object(image, np.ones_like(image))
 
-# def majority(objs: list[ARC_Object]) -> ARC_Object:
-#     height, h_count = np.unique([o.height for o in objs], axis=0, return_counts=True)
-#     width, w_count = np.unique([o.width for o in objs], axis=0, return_counts=True)
-#     h = height[np.argmax(h_count)]
-#     w = width[np.argmax(w_count)]
-#     grids = []
-#     # Standardize sizes of all inputs. Only handles cases when outlier is larger than others,
-#     # which appears to be the most common case
-#     for o in objs:
-#         grid = o.grid
-#         while grid.shape[0] > h:
-#             count = np.count_nonzero(grid, axis=1)
-#             if count[0] >= count[-1]:
-#                 grid = np.delete(grid, -1, 0)
-#             else:
-#                 grid = np.delete(grid, 0, 0)
-#         while grid.shape[1] > w:
-#             count = np.count_nonzero(grid, axis=0)
-#             if count[0] >= count[-1]:
-#                 grid = np.delete(grid, -1, 1)
-#             else:
-#                 grid = np.delete(grid, 0, 1)
-#         grids.append(grid)
-#     stacked = np.stack(grids, axis=0)
-#     majority, _ = mode(stacked, axis=0)
-#     image = majority.squeeze()
-#     return ARC_Object(image, np.ones_like(image)) 
+def majority(objs: list[ARC_Object]) -> ARC_Object:
+    try:
+        height, h_count = np.unique([o.height for o in objs], axis=0, return_counts=True)
+        width, w_count = np.unique([o.width for o in objs], axis=0, return_counts=True)
+        h = height[np.argmax(h_count)]
+        w = width[np.argmax(w_count)]
+        grids = []
+        # Standardize sizes of all inputs. Only handles cases when outlier is larger than others,
+        # which appears to be the most common case
+        for o in objs:
+            grid = o.grid
+            while grid.shape[0] > h:
+                count = np.count_nonzero(grid, axis=1)
+                if count[0] >= count[-1]:
+                    grid = np.delete(grid, -1, 0)
+                else:
+                    grid = np.delete(grid, 0, 0)
+            while grid.shape[1] > w:
+                count = np.count_nonzero(grid, axis=0)
+                if count[0] >= count[-1]:
+                    grid = np.delete(grid, -1, 1)
+                else:
+                    grid = np.delete(grid, 0, 1)
+            grids.append(grid)
+        stacked = np.stack(grids, axis=0)
+        majority, _ = mode(stacked, axis=0)
+        image = majority.squeeze()
+        return ARC_Object(image, np.ones_like(image)) 
+    except:
+        return None
 
 
 # Non-DSL Functions
@@ -218,3 +221,54 @@ def draw(base: ARC_Object, tile: ARC_Object, position: Tuple[int, int]) -> ARC_O
     
     """
     base.grid[position[0] : position[0] + tile.height, position[1] : position[1] + tile.width] = tile.grid
+
+def and_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
+    # Determine the overlapping region dimensions
+    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
+    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
+    
+    # Crop both grids to the overlapping region
+    cropped_grid1 = obj1.grid[:height, :width]
+    cropped_grid2 = obj2.grid[:height, :width]
+    
+    # Perform the 'and' operation on the overlapping region
+    mask1 = cropped_grid1 != 0
+    mask2 = cropped_grid2 != 0
+    image = np.where(mask1 & mask2, cropped_grid1, 0)
+    
+    # Create a new ARC_Object for the result
+    return ARC_Object(image, np.ones_like(image))
+
+def or_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
+    # Determine the overlapping region dimensions
+    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
+    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
+    
+    # Crop both grids to the overlapping region
+    cropped_grid1 = obj1.grid[:height, :width]
+    cropped_grid2 = obj2.grid[:height, :width]
+    
+    # Perform the 'and' operation on the overlapping region
+    mask1 = cropped_grid1 != 0
+    mask2 = cropped_grid2 != 0
+    image = np.where(mask1 | mask2, np.where(cropped_grid1 == 0, cropped_grid2, cropped_grid1), 0)
+    
+    # Create a new ARC_Object for the result
+    return ARC_Object(image, np.ones_like(image))
+
+def xor_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
+    # Determine the overlapping region dimensions
+    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
+    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
+    
+    # Crop both grids to the overlapping region
+    cropped_grid1 = obj1.grid[:height, :width]
+    cropped_grid2 = obj2.grid[:height, :width]
+    
+    # Perform the 'and' operation on the overlapping region
+    mask1 = cropped_grid1 != 0
+    mask2 = cropped_grid2 != 0
+    image = np.where(mask1 ^ mask2, cropped_grid1, 0)
+    
+    # Create a new ARC_Object for the result
+    return ARC_Object(image, np.ones_like(image))
