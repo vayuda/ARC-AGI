@@ -179,10 +179,14 @@ class PCFG_Encoder(nn.Module):
     def load_embedding_model(self, embedding_model_fp, freeze_emb_model):
         self.embedding_model_fp = embedding_model_fp
         self.freeze_emb_model = freeze_emb_model
-        self.embedding_model = source.embedding.load_v2_ViT(embedding_model_fp, device=self.device)
-        if freeze_emb_model:
-            for param in self.embedding_model.parameters():
-                param.requires_grad = False
+        
+        if self.embedding_model_fp == "mobilenet_v2":
+            self.embedding_model = source.embedding.load_mobilenet_v2().to(self.device)
+        else:
+            self.embedding_model = source.embedding.load_v2_ViT(embedding_model_fp, device=self.device)
+            if freeze_emb_model:
+                for param in self.embedding_model.parameters():
+                    param.requires_grad = False
 
     def save_model(self):
         """Save the model to a file."""

@@ -1,6 +1,9 @@
 import os
 import sys
 import random
+import numpy as np
+
+from copy import deepcopy
 from typing import List, Set, Callable
 
 # Need to add root to sys.path to import source and image_encoder
@@ -9,28 +12,28 @@ root = os.path.abspath(os.path.join(current_file_dir, ".."))
 if root not in sys.path:
     sys.path.append(root)
 
-from source import *
+import source as source
 
 
 VALID_COLORS = range(1, 10)
 BORDER_PADDING_COLORS = {10, 11, 12}
 
 dsl_base_operations = [
-    recolor,
-    rotate, 
-    flip
+    source.recolor,
+    source.rotate, 
+    source.flip
 ]
 
 dsl_obj_operations = [
-    color,
-    recolor,
-    rotate, 
-    flip,
-    delete,
-    translate,
-    single_copy,
-    copy_translate,
-    draw_line,
+    source.color,
+    source.recolor,
+    source.rotate, 
+    source.flip,
+    source.delete,
+    source.translate,
+    source.single_copy,
+    source.copy_translate,
+    source.draw_line,
 ]
 
 dsl_obj_probs = [0.1, 0.05, 0.05, 0.05, 0.15, 0.15, 0.15, 0.2, 0.1]
@@ -48,7 +51,7 @@ def get_dsl_operations():
     return dsl_operations
 
 
-def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_base:bool =True):
+def rand_transform(base_obj: source.ARC_Object, seg_method:int =0, depth:int =6, use_base:bool =True):
     '''
     Input:
     - base_obj: An ARC Object (base object)
@@ -115,7 +118,7 @@ def rand_transform(base_obj: ARC_Object, seg_method:int =0, depth:int =6, use_ba
     transformed_objs = [base_obj] + obj_list
     return original_objs, transformed_objs, transforms, obj_indices
 
-def _check_triviality(new_base: ARC_Object, transforms: List, obj_indices: List, intermediate_objs: List[ARC_Object]):
+def _check_triviality(new_base: source.ARC_Object, transforms: List, obj_indices: List, intermediate_objs: List[source.ARC_Object]):
     for i in range(len(intermediate_objs)-1):
         obj = intermediate_objs[i]
         if new_base.grid.shape == obj.grid.shape and np.array_equal(new_base.grid, obj.grid):
@@ -131,39 +134,39 @@ def _check_triviality(new_base: ARC_Object, transforms: List, obj_indices: List,
 # Helper Functions
 # =====================================
 
-def _apply_base_transform(base_obj: ARC_Object, transform: Callable) -> ARC_Object:
+def _apply_base_transform(base_obj: source.ARC_Object, transform: Callable) -> source.ARC_Object:
     if transform.__name__ == 'recolor':
         old_color, new_color = _get_recolor_colors(base_obj)
-        base_obj = recolor(base_obj, old_color, new_color)
+        base_obj = source.recolor(base_obj, old_color, new_color)
     
     elif transform.__name__ == 'rotate':
-        base_obj = rotate(base_obj)
+        base_obj = source.rotate(base_obj)
     
     elif transform.__name__ == 'flip':
-        base_obj = flip(base_obj)
+        base_obj = source.flip(base_obj)
     
     else:
         raise InvalidTransformationError(f"Invalid transformation: {transform.__name__}.")
 
     return base_obj
 
-def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], transform: Callable) -> List[ARC_Object]:
+def _apply_obj_transform(base_obj: source.ARC_Object, obj_list: List[source.ARC_Object], transform: Callable) -> List[source.ARC_Object]:
     obj_idx = random.randint(0, len(obj_list) - 1)
     transform_obj = obj_list.pop(obj_idx)  # Remove from list to apply transformation
 
     if transform.__name__ == 'color':
         new_color = random.choice(VALID_COLORS)
-        transform_obj = color(transform_obj, new_color)
+        transform_obj = source.color(transform_obj, new_color)
     
     elif transform.__name__ == 'recolor':
         old_color, new_color = _get_recolor_colors(transform_obj)
-        transform_obj = recolor(transform_obj, old_color, new_color)
+        transform_obj = source.recolor(transform_obj, old_color, new_color)
     
     elif transform.__name__ == 'rotate':
-        transform_obj = rotate(transform_obj)
+        transform_obj = source.rotate(transform_obj)
     
     elif transform.__name__ == 'flip':
-        transform_obj = flip(transform_obj)
+        transform_obj = source.flip(transform_obj)
     
     elif transform.__name__ == 'delete':
         if len(obj_list) <= 2:
@@ -176,7 +179,7 @@ def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], trans
         if translate_r == 0 and translate_c == 0:
             obj_list.append(deepcopy(transform_obj))   # Need to add back to list if no translation
             raise InvalidTransformationError("Translation is trivial.")
-        transform_obj = translate(transform_obj, (translate_r, translate_c))
+        transform_obj = source.translate(transform_obj, (translate_r, translate_c))
     
     elif transform.__name__ == 'single_copy':
         new_base = _get_background([base_obj], use_padding=True)
@@ -185,7 +188,7 @@ def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], trans
         translate_r, translate_c = random.randint(*t_bounds_r), random.randint(*t_bounds_c)
         if translate_r == 0 and translate_c == 0:
             raise InvalidTransformationError("Translation is trivial.")
-        transform_obj = single_copy(new_base, transform_obj, direction=(translate_r, translate_c))
+        transform_obj = source.single_copy(new_base, transform_obj, direction=(translate_r, translate_c))
     
     elif transform.__name__ == 'copy_translate':
         new_base = _get_background([base_obj], use_padding=True)
@@ -195,13 +198,13 @@ def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], trans
         if translate_r == 0 and translate_c == 0:
             obj_list.append(deepcopy(transform_obj))   # Need to add back to list if no translation
             raise InvalidTransformationError("Translation is trivial.")
-        transform_obj = copy_translate(new_base, transform_obj, direction=(translate_r, translate_c), end=0)
+        transform_obj = source.copy_translate(new_base, transform_obj, direction=(translate_r, translate_c), end=0)
     
     elif transform.__name__ == 'draw_line':
         obj_list.append(deepcopy(transform_obj))
         new_base = _get_background([base_obj], use_padding=True)
         start, end = _get_draw_line_bounds(base_obj)
-        transform_obj = draw_line(new_base, start, end, random.choice(VALID_COLORS))
+        transform_obj = source.draw_line(new_base, start, end, random.choice(VALID_COLORS))
     
     else:
         raise InvalidTransformationError(f"Invalid transformation: {transform.__name__}.")
@@ -211,16 +214,16 @@ def _apply_obj_transform(base_obj: ARC_Object, obj_list: List[ARC_Object], trans
     return obj_list, obj_idx
 
 
-def _extract_from_base(base_obj: ARC_Object, seg_method:int =0):
+def _extract_from_base(base_obj: source.ARC_Object, seg_method:int =0):
     if seg_method == 0:
         seg_method = random.randint(1, 2)
-    obj_list = extract_objects(base_obj, method=SEG_METHODS[seg_method])
+    obj_list = source.extract_objects(base_obj, method=source.SEG_METHODS[seg_method])
     if len(obj_list) > 12 or len(obj_list) == 0:
         seg_method = 1   # Color segmentation -- has bound of 12 colors and will return at least one object
-        obj_list = extract_objects(base_obj, method=SEG_METHODS[seg_method])
+        obj_list = source.extract_objects(base_obj, method=source.SEG_METHODS[seg_method])
     return obj_list, seg_method
 
-def _get_background(obj_list: List[ARC_Object], use_padding: bool =False) -> ARC_Object:
+def _get_background(obj_list: List[source.ARC_Object], use_padding: bool =False) -> source.ARC_Object:
     """ Returns a background object from a list of objects. """
     # background_color = 12 if use_padding else _get_background_color(obj_list)
     background_color = 12 if use_padding else 0
@@ -228,7 +231,7 @@ def _get_background(obj_list: List[ARC_Object], use_padding: bool =False) -> ARC
     for obj in obj_list:
         max_r = max(max_r, obj.height + obj.top_left[0])
         max_c = max(max_c, obj.width + obj.top_left[1])
-    new_base = ARC_Object(np.full((max_r, max_c), background_color))
+    new_base = source.ARC_Object(np.full((max_r, max_c), background_color))
     return new_base
 
 # def _get_background_color(obj_list: List[ARC_Object]) -> int:
@@ -240,7 +243,7 @@ def _get_background(obj_list: List[ARC_Object], use_padding: bool =False) -> ARC
 #     pixel_counts = pixel_counts[0:10]  # Exclude border and padding
 #     return pixel_counts.index(max(pixel_counts))
 
-def _flatten_objects(base: ARC_Object, obj_list: List[ARC_Object]) -> ARC_Object:
+def _flatten_objects(base: source.ARC_Object, obj_list: List[source.ARC_Object]) -> source.ARC_Object:
     """ 
     Flattens a list of ARC_Objects into a single ARC_Object.
 
@@ -258,7 +261,7 @@ def _flatten_objects(base: ARC_Object, obj_list: List[ARC_Object]) -> ARC_Object
 
     return new_base
 
-def _get_recolor_colors(recolor_obj: ARC_Object) -> tuple[int, int]:
+def _get_recolor_colors(recolor_obj: source.ARC_Object) -> tuple[int, int]:
     """ Returns a tuple of old and new colors for recoloring an object. """
     active_colors: Set[int] = set()
     active_colors.update(recolor_obj.grid.flatten())
@@ -269,7 +272,7 @@ def _get_recolor_colors(recolor_obj: ARC_Object) -> tuple[int, int]:
         new_color = random.choice(VALID_COLORS)
     return old_color, new_color
 
-def _get_draw_line_bounds(base_obj: ARC_Object) -> tuple[int, int]:
+def _get_draw_line_bounds(base_obj: source.ARC_Object) -> tuple[int, int]:
     """ Returns the start and end coordinates for drawing a line on the base object. """
     start_r = random.randint(0, base_obj.height - 1)
     end_r = random.randint(start_r, base_obj.height - 1)
@@ -277,7 +280,7 @@ def _get_draw_line_bounds(base_obj: ARC_Object) -> tuple[int, int]:
     end_c = random.randint(start_c, base_obj.width - 1)
     return [start_r, start_c], [end_r, end_c]
 
-def _get_transform_bounds(translate_object: ARC_Object, base_obj: ARC_Object) -> tuple[(int, int), (int, int)]:
+def _get_transform_bounds(translate_object: source.ARC_Object, base_obj: source.ARC_Object) -> tuple[(int, int), (int, int)]:
     """ Given a translate object and base object (root object that defines bounds), returns bounds of valid translations. """
     min_r = base_obj.top_left[0]
     max_r = base_obj.top_left[0] + base_obj.height

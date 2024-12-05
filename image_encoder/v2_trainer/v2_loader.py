@@ -18,7 +18,7 @@ if root not in sys.path:
 
 import source as source
 from phog import synthetic_generator as sg
-from utility_v2 import upsize_image
+from .utility_v2 import upsize_image
 
 
 

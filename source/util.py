@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from PIL import Image, ImageDraw
 import json
 from enum import IntEnum
@@ -34,7 +35,7 @@ COLOR_TO_HEX = {
     7:  '#FF851B',  # light orange
     8:  '#87D8F1',  # cyan
     9:  '#921231',  # red
-    10: '#555555',  # border
+    10: '#FFFFFF',  # white
     11: '#FF6700',  # active grid border
     12: '#D2B48C',  # image padding
 }
@@ -211,3 +212,63 @@ def visualize_set(objects):
         if current_x >= combined_width:
             current_x = 0
             current_y += max_height+1
+
+
+# =============================================
+# Helper Functions for Objects
+# =============================================
+def upsize_image(image, scale_factor):
+    """
+    Resizes a torch tensor of integers based on the eligibility for scaling up or down.
+    
+    Args:
+        image (torch.Tensor): A 2D tensor of integers with shape (H, W).
+    
+    Returns Resized image (2-d torch.Tensor of ints).
+    """
+    scaled_image = image.repeat_interleave(scale_factor, dim=0).repeat_interleave(scale_factor, dim=1)
+    return scaled_image
+
+def pad_to_32x32(image, center_image=True):
+    """ Pads the input image tensor to 32x32 with custom padding rules. """
+    # Create a 1-pixel border of '11' around the image
+    bordered_image = torch.nn.functional.pad(image, (1, 1, 1, 1), value=11)
+    cropped_image = bordered_image[:32, :32]
+    
+    h, w = cropped_image.shape
+    if center_image:
+        x, y = (32 - h) // 2, (32 - w) // 2
+    else:
+        x, y = 0, 0
+
+    pad_bottom = max(0, 32 - h)
+    pad_right = max(0, 32 - w)
+    
+    padded_image = torch.nn.functional.pad(
+        cropped_image, 
+        (x, pad_right - x, y, pad_bottom - y), 
+        value=12
+    )
+
+    return padded_image
+
+def matrix_to_rgb_tensor(matrix):
+    """
+    Converts a 2D NumPy matrix of integers (0-12) into a 3D RGB tensor (H x W x 3).
+    
+    Args:
+        matrix (np.ndarray): 2D NumPy array with integers ranging from 0 to 12.
+    
+    Returns torch.Tensor: A tensor of shape (3, H, W) with RGB values normalized to [0, 1].
+    """
+    height, width = matrix.shape
+    rgb_array = np.zeros((height, width, 3), dtype=np.float32)  # Initialize RGB array
+
+    # Convert each integer in the matrix to its corresponding RGB values
+    for y in range(height):
+        for x in range(width):
+            rgb_array[y, x] = hex_to_rgb(COLOR_TO_HEX[matrix[y, x]])
+    
+    # Convert to PyTorch tensor and permute to (3, H, W)
+    rgb_tensor = torch.tensor(rgb_array).permute(2, 0, 1)  # Convert (H x W x 3) to (3 x H x W)
+    return rgb_tensor

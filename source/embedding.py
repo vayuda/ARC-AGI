@@ -12,6 +12,13 @@ if root not in sys.path:
     sys.path.append(root)
 
 
+def load_mobilenet_v2():
+    # Load pretrained mobilenet
+    from torchvision.models import mobilenet_v2
+    model = mobilenet_v2(pretrained=True)
+    model = torch.nn.Sequential(model.features, torch.nn.AdaptiveAvgPool2d((1, 1)))
+    return model
+
 def load_resnet50():
     # Load the pretrained ResNet
     from torchvision.models import resnet50
