@@ -507,11 +507,30 @@ def detect_symmetry(obj: ARC_Object) -> np.ndarray:
     rows, cols = matrix.shape
     
     # Check for symmetry
-    horizontal_symmetry = np.all(matrix == matrix[::-1])
-    vertical_symmetry = np.all(matrix == matrix[:, ::-1])
-    point_symmetry = np.all(matrix == np.flip(matrix, axis=(0, 1)))
-    main_diagonal_symmetry = np.all(matrix == matrix.T)
-    anti_diagonal_symmetry = np.all(matrix == np.flip(matrix.T, axis=1))
+    try:
+        horizontal_symmetry = np.all(matrix == matrix[::-1])
+    except:
+        horizontal_symmetry = False
+    
+    try:
+        vertical_symmetry = np.all(matrix == matrix[:, ::-1])
+    except:
+        vertical_symmetry = False
+    
+    try:
+        point_symmetry = np.all(matrix == np.flip(matrix, axis=(0, 1)))
+    except:
+        point_symmetry = False
+    
+    try:
+        main_diagonal_symmetry = np.all(matrix == matrix.T)
+    except:
+        main_diagonal_symmetry = False
+    
+    try:
+        anti_diagonal_symmetry = np.all(matrix == np.flip(matrix.T, axis=1))
+    except:
+        anti_diagonal_symmetry = False
     
     if point_symmetry:
         # Generate mask for point symmetry (upper-left quadrant excluding center row and column if odd)

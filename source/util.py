@@ -131,8 +131,8 @@ def visualize_object(obj):
     return img
 
     
-def visualize_problem(puzzle_id: str):
-    with open(f"data/training/{puzzle_id}.json", 'r') as f:
+def visualize_problem(puzzle_id: str, folder):
+    with open(f"data/{folder}/{puzzle_id}.json", 'r') as f:
         data = json.load(f)
     examples = data['train']
     
