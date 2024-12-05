@@ -27,10 +27,9 @@ def rotate(obj: ARC_Object, num_rotations: int =None) -> ARC_Object:
     new_obj.height, new_obj.width = new_obj.grid.shape
     return new_obj
 
-def flip(obj: ARC_Object) -> ARC_Object:
-    """ Mirrors over the y-axis. """
+def flip(obj: ARC_Object, axis: int) -> ARC_Object:
     new_obj = deepcopy(obj)
-    new_obj.grid = np.fliplr(new_obj.grid).copy()
+    new_obj.grid = np.flip(new_obj.grid, axis=axis)
     return new_obj
 
 def delete(obj: ARC_Object) -> ARC_Object:
