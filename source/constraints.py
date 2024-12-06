@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from . import dsl
 from collections import Counter
+from copy import deepcopy
 
 class RelationGraph():
     def __init__(self, objects: List[Tuple[List[ARC_Object], List[ARC_Object]]]):
@@ -393,9 +394,34 @@ def filter_by_color(objects: List[ARC_Object], color: int) -> List[ARC_Object]:
 
 def most_common(objs: list[ARC_Object]) -> ARC_Object:
     try:
-        unique, count = np.unique([o.grid for o in objs], axis=0, return_counts=True)
-        image = unique[np.argmax(count)]
-        return ARC_Object(image, np.ones_like(image))
+        grid_to_object_map = {}
+        flat_grids = []
+        
+        for obj in objs:
+            flat_grid = tuple(obj.grid.flatten())
+            flat_grids.append(flat_grid)
+            grid_to_object_map[flat_grid] = obj
+
+        counts = Counter(flat_grids)
+        most_common_flat = counts.most_common(1)[0][0]
+        new_obj = deepcopy(grid_to_object_map[most_common_flat])
+        return new_obj
+    except:
+        return None
+
+def least_common(objs: list[ARC_Object]) -> ARC_Object:
+    try:
+        grid_to_object_map = {}
+        flat_grids = []
+        
+        for obj in objs:
+            flat_grid = tuple(obj.grid.flatten())
+            flat_grids.append(flat_grid)
+            grid_to_object_map[flat_grid] = obj
+        
+        counts = Counter(flat_grids)
+        least_common_flat = min(counts.items(), key=lambda x: x[1])[0]
+        return deepcopy(grid_to_object_map[least_common_flat])
     except:
         return None
 

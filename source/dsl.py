@@ -222,52 +222,46 @@ def draw(base: ARC_Object, tile: ARC_Object, position: Tuple[int, int]) -> ARC_O
     base.grid[position[0] : position[0] + tile.height, position[1] : position[1] + tile.width] = tile.grid
 
 def and_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
-    # Determine the overlapping region dimensions
-    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
-    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
-    
-    # Crop both grids to the overlapping region
-    cropped_grid1 = obj1.grid[:height, :width]
-    cropped_grid2 = obj2.grid[:height, :width]
-    
-    # Perform the 'and' operation on the overlapping region
-    mask1 = cropped_grid1 != 0
-    mask2 = cropped_grid2 != 0
-    image = np.where(mask1 & mask2, cropped_grid1, 0)
-    
-    # Create a new ARC_Object for the result
-    return ARC_Object(image, np.ones_like(image))
+    if obj1 is None and obj2 is None:
+        return None
+    if obj1 is None and obj2 is not None:
+        return deepcopy(obj2)
+    if obj1 is not None and obj2 is None:
+        return deepcopy(obj1)
+    try:
+        mask1 = obj1.grid != 0
+        mask2 = obj2.grid != 0
+        image = np.where(mask1 & mask2, obj1.grid, 0)
+        return ARC_Object(image, np.ones_like(image))
+    except:
+        return None
 
 def or_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
-    # Determine the overlapping region dimensions
-    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
-    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
-    
-    # Crop both grids to the overlapping region
-    cropped_grid1 = obj1.grid[:height, :width]
-    cropped_grid2 = obj2.grid[:height, :width]
-    
-    # Perform the 'and' operation on the overlapping region
-    mask1 = cropped_grid1 != 0
-    mask2 = cropped_grid2 != 0
-    image = np.where(mask1 | mask2, np.where(cropped_grid1 == 0, cropped_grid2, cropped_grid1), 0)
-    
-    # Create a new ARC_Object for the result
-    return ARC_Object(image, np.ones_like(image))
+    if obj1 is None and obj2 is None:
+        return None
+    if obj1 is None and obj2 is not None:
+        return deepcopy(obj2)
+    if obj1 is not None and obj2 is None:
+        return deepcopy(obj1)
+    try:
+        mask1 = obj1.grid != 0
+        mask2 = obj2.grid != 0
+        image = np.where(mask1 | mask2, np.where(obj1.grid == 0, obj2.grid, obj1.grid), 0)
+        return ARC_Object(image, np.ones_like(image))
+    except:
+        return None
 
 def xor_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
-    # Determine the overlapping region dimensions
-    height = min(obj1.grid.shape[0], obj2.grid.shape[0])
-    width = min(obj1.grid.shape[1], obj2.grid.shape[1])
-    
-    # Crop both grids to the overlapping region
-    cropped_grid1 = obj1.grid[:height, :width]
-    cropped_grid2 = obj2.grid[:height, :width]
-    
-    # Perform the 'and' operation on the overlapping region
-    mask1 = cropped_grid1 != 0
-    mask2 = cropped_grid2 != 0
-    image = np.where(mask1 ^ mask2, cropped_grid1, 0)
-    
-    # Create a new ARC_Object for the result
-    return ARC_Object(image, np.ones_like(image))
+    if obj1 is None and obj2 is None:
+        return None
+    if obj1 is None and obj2 is not None:
+        return deepcopy(obj2)
+    if obj1 is not None and obj2 is None:
+        return deepcopy(obj1)
+    try:
+        mask1 = obj1.grid != 0
+        mask2 = obj2.grid != 0
+        image = np.where(mask1 ^ mask2, obj1.grid, 0)
+        return ARC_Object(image, np.ones_like(image))
+    except:
+        None
