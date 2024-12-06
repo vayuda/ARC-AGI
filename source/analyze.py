@@ -47,6 +47,20 @@ class ListProperties:
         except:
             self.xor_all = None
 
+class CrossExamples:
+    def __init__(self, lst: List[ARC_Object]):
+        self.lst = lst
+        shapes = {obj.grid.shape for obj in lst}
+        if len(shapes) == 1:
+            self.uni_shape = list(shapes)[0]
+        else:
+            self.uni_shape = None
+        colors = {unicolor(obj) for obj in lst}
+        if len(colors) == 1:
+            self.uni_color = list(colors)[0]
+        else:
+            self.uni_color = -1
+
 class CompareObjects:
     def __init__(self, obj1: ARC_Object, obj2: ARC_Object):
         self.obj1 = obj1
@@ -75,29 +89,33 @@ class CompareObjects:
 
         self.same_grid = same_obj(obj1, obj2)
         self.same_pos = obj1.top_left == obj2.top_left
-        self.same_color = dominant_color(obj1) == dominant_color(obj2)
+        self.same_color = (unicolor(obj1) == unicolor(obj2)) and (unicolor(obj1) != -1)
         self.same_size = (obj1.height == obj2.height) and (obj1.width == obj2.width)
         self.rot_flip = rot_flip(obj1.grid, obj2.grid)
+        self.colorize = dominant_color(obj1) == unicolor(obj2) and (unicolor(obj2) != -1)
     
     def guess_transform(self):
         if self.same_grid:
-            return [lambda obj: recolor(obj, 12, 0)] # Swap all padding to black
+            return [lambda obj, *args: recolor(obj, 12, 0)] # Swap all padding to black
         
         transformations = []
         if self.same_size and self.same_pos and not self.same_color:
             color1 = dominant_color(self.obj1)
             color2 = dominant_color(self.obj2)
-            transformations.append(lambda obj: recolor(obj, color1, color2))
+            transformations.append(lambda obj, *args: recolor(obj, color1, color2))
+        
+        if not self.same_color and self.colorize: # HACK for basically one problem
+            transformations.append(lambda obj, base: color(ARC_Object(np.ones(base.grid.shape)), dominant_color(obj)))
         
         if self.rot_flip is not None:
             rot_arg, flip_arg = self.rot_flip
-            transformations.append(lambda obj: rotate(obj, rot_arg))
-            transformations.append(lambda obj: flip(obj, flip_arg))
+            transformations.append(lambda obj, *args: rotate(obj, rot_arg))
+            transformations.append(lambda obj, *args: flip(obj, flip_arg))
         
         return transformations
     
     def __str__(self):
-        return f'same grid: {self.same_grid}, same pos: {self.same_pos}, same color: {self.same_color}, same size: {self.same_size}, rot flip: {self.rot_flip}, sym: {self.sym}'
+        return f'same grid: {self.same_grid}, same pos: {self.same_pos}, same color: {self.same_color}, same size: {self.same_size}, rot flip: {self.rot_flip}, sym: {self.sym}, colorize: {self.colorize}'
 
 class CompareObjectList:
     def __init__(self, obj: ARC_Object, lst: ListProperties):
@@ -142,11 +160,15 @@ def build_problems_dict(dataloader):
         problems[id] = dict()
         problems[id]['train'] = dict()
         seg_method = 'monochrome_contour'
+        all_train_input = []
+        all_train_output = []
         for i in range(len(train)):
             input_image = train[i]['input'].squeeze(0).numpy()
             output_image = train[i]['output'].squeeze(0).numpy()
             input_object = ARC_Object(image=input_image, mask=np.ones_like(input_image), parent=None)
             output_object = ARC_Object(image=output_image, mask=np.ones_like(output_image), parent=None)
+            all_train_input.append(input_object)
+            all_train_output.append(output_object)
             problems[id]['train'][f'ex_{i}'] = {'input': input_object, 'output': output_object}
             input_extraction = extract_objects(input_object, method=seg_method)
             output_extraction  = extract_objects(output_object, method=seg_method)
@@ -170,10 +192,12 @@ def build_problems_dict(dataloader):
         output_extraction  = extract_objects(output_object, method=seg_method)
         problems[id]['test']['extracted'] = (input_extraction, output_extraction)
         problems[id]['seg_method'] = seg_method
+        problems[id]['all_train_input'] = all_train_input
+        problems[id]['all_train_output'] = all_train_output
 
     return problems
 
-def build_analyze(prob):
+def build_analyze(prob, pid):
     analyze = dict()
 
     for i in range(len(prob['train'])):
@@ -181,6 +205,8 @@ def build_analyze(prob):
         in_obj = prob['train'][f'ex_{i}']['input']
         out_obj = prob['train'][f'ex_{i}']['output']
         in_to_out = CompareObjects(in_obj, out_obj)
+        # if pid == '445eab21':
+        #     print(in_to_out)
         seg_in = ListProperties(prob['train'][f'ex_{i}']['extracted'][0])
         seg_out = ListProperties(prob['train'][f'ex_{i}']['extracted'][1])
         out_to_seg_in = CompareObjectList(out_obj, seg_in)
@@ -189,6 +215,7 @@ def build_analyze(prob):
         analyze[f'ex_{i}']['out_to_seg_in'] = out_to_seg_in.guess_transform()
         analyze[f'ex_{i}']['seg_in_to_seg_out'] = [[i.guess_transform() for i in j] for j in seg_in_to_seg_out]
     
+    analyze['cross_outputs'] = CrossExamples(prob['all_train_output'])
     return analyze
 
 def solve(prob, analyze):
@@ -199,7 +226,21 @@ def solve(prob, analyze):
     out_to_seg_in = []
     seg_in_to_seg_out = []
 
+    base_obj = test_input
+    if analyze['cross_outputs'].uni_shape is not None:
+        base_obj = ARC_Object(np.zeros(analyze['cross_outputs'].uni_shape))
+
+    def post_process(obj: ARC_Object) -> ARC_Object:
+        if obj is None:
+            return obj
+        obj = recolor(obj, 12, 0)
+        if analyze['cross_outputs'].uni_color != -1:
+            obj = color(obj, analyze['cross_outputs'].uni_color)
+        return obj
+
     for key, val in analyze.items():
+        if key == 'cross_outputs':
+            continue
         for f in val['in_to_out']:
             in_to_out.append(f)
         if val['out_to_seg_in'] is not None:
@@ -207,14 +248,16 @@ def solve(prob, analyze):
         for f_lst in val['seg_in_to_seg_out']:
             for f in f_lst:
                 seg_in_to_seg_out.extend(f)
-
+    
     for f in in_to_out:
         no_good = False
-        out = f(test_input)
+        out = f(test_input, base_obj)
+        out = post_process(out)
         for i in range(len(prob['train'])):
             in_obj = prob['train'][f'ex_{i}']['input']
             out_obj = prob['train'][f'ex_{i}']['output']
-            train_out = f(in_obj)
+            train_out = f(in_obj, base_obj)
+            train_out = post_process(train_out)
             if not same_obj(train_out, out_obj):
                 no_good = True
                 break
@@ -224,12 +267,14 @@ def solve(prob, analyze):
     for f in out_to_seg_in:
         no_good = False
         out = f(seg_in)
+        out = post_process(out)
 
         for i in range(len(prob['train'])):
             in_obj = prob['train'][f'ex_{i}']['input']
             out_obj = prob['train'][f'ex_{i}']['output']
             seg_train_in = prob['train'][f'ex_{i}']['extracted'][0]
             train_out = f(seg_train_in)
+            train_out = post_process(train_out)
             if not same_obj(train_out, out_obj):
                 no_good = True
                 break
@@ -240,13 +285,17 @@ def solve(prob, analyze):
     for o in seg_in:
         curr = deepcopy(o)
         for f in seg_in_to_seg_out:
-            new = f(curr)
+            new = f(curr, base_obj)
             if not same_obj(new, curr):
                 curr = new
                 break
         transformed.append(curr)
     if len(transformed) > 0:
-        out = _flatten_objects(test_input, transformed)
+        if base_obj is None:
+            out = _flatten_objects(test_input, transformed)
+        else:
+            out = _flatten_objects(base_obj, transformed)
+        out = post_process(out)
         return out
     
     return None

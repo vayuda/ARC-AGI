@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     count = 0
     for pid, prob in problems.items():
-        analyze = build_analyze(prob)
+        analyze = build_analyze(prob, pid)
         sln = solve(prob, analyze)
         if same_obj(sln, prob['test']['output']):
             print(pid)

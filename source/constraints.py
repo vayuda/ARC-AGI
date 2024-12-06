@@ -660,3 +660,11 @@ def dominant_color(obj: ARC_Object) -> int:
         return dominant
     else:
         return -1
+
+def unicolor(obj: ARC_Object) -> int:
+    unique_values = np.unique(obj.grid)
+    colors = [val for val in unique_values if val not in (0, 12)]
+    if len(colors) == 1:
+        return colors[0]
+    else:
+        return -1
