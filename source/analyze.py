@@ -151,6 +151,11 @@ def build_problems_dict(dataloader):
             input_extraction = extract_objects(input_object, method=seg_method)
             output_extraction  = extract_objects(output_object, method=seg_method)
             if len(input_extraction) > 10 or len(output_extraction) > 10:
+                seg_method = 'contour_scale'
+                input_extraction = extract_objects(input_object, method=seg_method)
+                output_extraction  = extract_objects(output_object, method=seg_method)
+            # HACK HACK HACK
+            if len(input_extraction) > 10 or len(output_extraction) > 10 or (seg_method == 'contour_scale' and len(input_extraction) <= 2 and len(output_extraction) <= 2):
                 seg_method = 'color'
                 input_extraction = extract_objects(input_object, method=seg_method)
                 output_extraction  = extract_objects(output_object, method=seg_method)
@@ -189,7 +194,6 @@ def build_analyze(prob):
 def solve(prob, analyze):
     test_input = prob['test']['input']
     seg_in = extract_objects(test_input, method=prob['seg_method'])
-    # seg_color = extract_objects(test_input, method='color')
 
     in_to_out = []
     out_to_seg_in = []
