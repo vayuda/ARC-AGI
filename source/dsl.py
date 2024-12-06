@@ -265,3 +265,11 @@ def xor_obj(obj1: ARC_Object, obj2: ARC_Object) -> ARC_Object:
         return ARC_Object(image, np.ones_like(image))
     except:
         None
+
+def complement(obj: ARC_Object) -> ARC_Object:
+    original_grid = obj.grid
+    complement = np.zeros_like(original_grid)
+    black_or_pad_mask = (original_grid == 0) | (original_grid == 12)
+    complement[black_or_pad_mask] = original_grid[~black_or_pad_mask].max(initial=1)  # Take a representative token
+    complement[~black_or_pad_mask] = 0
+    return ARC_Object(complement, np.ones_like(complement))

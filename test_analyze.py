@@ -3,7 +3,7 @@ from source import *
 from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
-    train_dataset = load_dataset(mode='training')
+    train_dataset = load_dataset(mode='evaluation')
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=False)
 
     problems = build_problems_dict(train_dataloader)

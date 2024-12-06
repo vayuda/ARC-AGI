@@ -1,8 +1,25 @@
 import numpy as np
 from functools import reduce
+import uuid
 from typing import List
 from . import *
 from phog.synthetic_generator import _flatten_objects
+
+class LabeledLambda:
+    def __init__(self, label, func):
+        self.label = label
+        self.func = func
+
+    def __hash__(self):
+        return hash(self.label)
+
+    def __eq__(self, other):
+        if isinstance(other, LabeledLambda):
+            return self.label == other.label
+        return False
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
 def same_grid(grid1, grid2):
     grid1_normalized = np.where(grid1 == 12, 0, grid1)
@@ -13,6 +30,13 @@ def same_obj(obj1: ARC_Object, obj2: ARC_Object):
     if obj1 is None or obj2 is None:
         return False
     return same_grid(obj1.grid, obj2.grid)
+
+def are_complements(obj1: ARC_Object, obj2: ARC_Object) -> bool:
+    mask1 = (obj1.grid == 0) | (obj1.grid == 12)
+    mask2 = (obj2.grid == 0) | (obj2.grid == 12)
+    if mask1.shape != mask2.shape:
+        return False
+    return np.array_equal(mask1, ~mask2)
 
 def rot_flip(matrix1, matrix2):
     for k in range(4):
@@ -93,29 +117,33 @@ class CompareObjects:
         self.same_size = (obj1.height == obj2.height) and (obj1.width == obj2.width)
         self.rot_flip = rot_flip(obj1.grid, obj2.grid)
         self.colorize = dominant_color(obj1) == unicolor(obj2) and (unicolor(obj2) != -1)
+        self.complement = are_complements(obj1, obj2)
     
     def guess_transform(self):
         if self.same_grid:
-            return [lambda obj, *args: recolor(obj, 12, 0)] # Swap all padding to black
+            return [LabeledLambda(str(uuid.uuid4()), lambda obj, *args: recolor(obj, 12, 0))] # Swap all padding to black
         
         transformations = []
         if self.same_size and self.same_pos and not self.same_color:
             color1 = dominant_color(self.obj1)
             color2 = dominant_color(self.obj2)
-            transformations.append(lambda obj, *args: recolor(obj, color1, color2))
+            transformations.append(LabeledLambda(f'recolor{color1}{color2}', lambda obj, *args: recolor(obj, color1, color2)))
         
-        if not self.same_color and self.colorize: # HACK for basically one problem
-            transformations.append(lambda obj, base: color(ARC_Object(np.ones(base.grid.shape)), dominant_color(obj)))
+        if not self.same_color and self.colorize:
+            transformations.append(LabeledLambda(str(uuid.uuid4()), lambda obj, base: color(ARC_Object(np.ones(base.grid.shape)), dominant_color(obj))))
         
         if self.rot_flip is not None:
             rot_arg, flip_arg = self.rot_flip
-            transformations.append(lambda obj, *args: rotate(obj, rot_arg))
-            transformations.append(lambda obj, *args: flip(obj, flip_arg))
+            transformations.append(LabeledLambda(f'rotate{rot_arg}', lambda obj, *args: rotate(obj, rot_arg)))
+            transformations.append(LabeledLambda(f'flip{flip_arg}', lambda obj, *args: flip(obj, flip_arg)))
+        
+        if self.complement:
+            transformations.append(LabeledLambda('complement', lambda obj, *args: complement(obj)))
         
         return transformations
     
     def __str__(self):
-        return f'same grid: {self.same_grid}, same pos: {self.same_pos}, same color: {self.same_color}, same size: {self.same_size}, rot flip: {self.rot_flip}, sym: {self.sym}, colorize: {self.colorize}'
+        return f'same grid: {self.same_grid}, same pos: {self.same_pos}, same color: {self.same_color}, same size: {self.same_size}, rot flip: {self.rot_flip}, sym: {self.sym}, colorize: {self.colorize}, complement: {self.complement}'
 
 class CompareObjectList:
     def __init__(self, obj: ARC_Object, lst: ListProperties):
@@ -205,8 +233,6 @@ def build_analyze(prob, pid):
         in_obj = prob['train'][f'ex_{i}']['input']
         out_obj = prob['train'][f'ex_{i}']['output']
         in_to_out = CompareObjects(in_obj, out_obj)
-        # if pid == '445eab21':
-        #     print(in_to_out)
         seg_in = ListProperties(prob['train'][f'ex_{i}']['extracted'][0])
         seg_out = ListProperties(prob['train'][f'ex_{i}']['extracted'][1])
         out_to_seg_in = CompareObjectList(out_obj, seg_in)
@@ -249,6 +275,9 @@ def solve(prob, analyze):
             for f in f_lst:
                 seg_in_to_seg_out.extend(f)
     
+    in_to_out = set(in_to_out)
+    seg_in_to_seg_out = set(seg_in_to_seg_out)
+    
     for f in in_to_out:
         no_good = False
         out = f(test_input, base_obj)
@@ -263,6 +292,25 @@ def solve(prob, analyze):
                 break
         if not no_good:
             return out
+    
+    out = deepcopy(test_input)
+    for f in in_to_out:
+        out = f(out, base_obj)
+    out = post_process(out)
+
+    no_good = False
+    for i in range(len(prob['train'])):
+        in_obj = prob['train'][f'ex_{i}']['input']
+        out_obj = prob['train'][f'ex_{i}']['output']
+        train_out = deepcopy(in_obj)
+        for f in in_to_out:
+            train_out = f(train_out, base_obj)
+        train_out = post_process(train_out)
+        if not same_obj(train_out, out_obj):
+            no_good = True
+            break
+    if not no_good:
+        return out
 
     for f in out_to_seg_in:
         no_good = False
